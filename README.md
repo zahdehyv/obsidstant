@@ -1,11 +1,18 @@
-# Obsidian - Gemini Plugin
+# Gemini Obsidian-Assistant Plugin `(Obsidstant)`
 
-Este es un plugin para Obsidian que permite grabar audio y utilizar la API de Google Gemini para crear o modificar archivos.
+Este plugin conecta tu Obsidian con el modelo Gemini de Google, permitiendo:
 
-## Funcionalidades
+*   **Leer:** Gemini puede entender el contenido de tus notas.
+*   **Escribir:** Gemini puede crear notas nuevas.
+*   **Modificar:** Gemini puede cambiar notas existentes.
+*   **Mover (pendiente):** Gemini puede mover y organizar notas existentes.
 
-- Grabar audio.
-- Llamar a la API de Google Gemini.
-- Crear y modificar archivos en Obsidian.
+**Instalación:**
 
-Este plugin facilita la interacción con la API de Gemini desde Obsidian, permitiendo automatizar tareas como la transcripción de audio y la generación de contenido.
+1.  Descarga el plugin desde la [página de releases](https://github.com/zahdehyv/obsidstant/releases).
+2.  Descomprime el archivo en `<your vault>/.obsidian/plugins/`.
+3.  En Obsidian, activa el plugin en `Configuración` > `Plugins de la comunidad`.
+
+**Configuración:**
+
+*   Necesitas una [clave de API de Gemini](https://aistudio.google.com/apikey).

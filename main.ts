@@ -1,5 +1,5 @@
-import { App, Plugin, Notice, PluginSettingTab, Setting, ItemView, WorkspaceLeaf } from 'obsidian';
-import { GoogleGenerativeAI, SchemaType, FunctionCallingMode, ChatSession, Part, GenerativeModel } from '@google/generative-ai';
+import { App, Plugin, Notice, PluginSettingTab, Setting, ItemView, WorkspaceLeaf, MarkdownRenderer } from 'obsidian';
+import { GoogleGenerativeAI, SchemaType, FunctionCallingMode, ChatSession, Part, GenerativeModel, Content } from '@google/generative-ai';
 import WaveSurfer from 'wavesurfer.js';
 import Sortable from 'sortablejs';
 
@@ -199,8 +199,11 @@ this.processButton.addEventListener('mouseup', () => {
 
 // Handle process button click
 this.processButton.addEventListener('click', async () => {
-    new Notice('SENDING REQUEST');
-    await this.processAudio();
+    this.disableButtons();
+    const loadingIndicator = this.addLoadingIndicator();
+    await this.processRequest();
+    this.enableButtons();
+    loadingIndicator.remove()
 });
 
         // Add the RESET HISTORY button
@@ -236,6 +239,8 @@ resetButton.addEventListener('click', () => {
 
         // Initialize the model and start the ChatSession
         if (this.genAI) {
+            const vaultContext = await this.loadVaultContext();
+
             this.model = this.genAI.getGenerativeModel({
                 model: "gemini-2.0-flash-exp",
                 systemInstruction: `
@@ -243,29 +248,24 @@ Eres un asistente inteligente diseñado para gestionar y organizar información 
 
 **Funcionalidades Principales:**
 
-1.  **Creación y Modificación de Archivos Markdown:**
-    *   Utiliza la función \`createFile\` para generar nuevos archivos .md en la ruta especificada.
-    *   Si un archivo ya existe en la ruta dada, la función \`createFile\` lo modificará, **conservando el contenido original**. Debes tener en cuenta el contenido previo al realizar cualquier modificación.
+1. **Creación y Modificación de Archivos Markdown:**
+    *   Utiliza la función \`writeFile\` para generar nuevos archivos .md en la ruta especificada.
+    *   Si un archivo ya existe en la ruta dada, la función \`writeFile\` lo modificará, **conservando el contenido original**. Debes tener en cuenta el contenido previo al realizar cualquier modificación.
     *   Aprovecha las funcionalidades de Markdown para estructurar el contenido: encabezados (#, ##, ###), listas (-, *), negritas (**texto**), cursivas (*texto*), enlaces ([texto](ruta_del_archivo.md)), etc.
     *   Los nombres de archivo deben ser intuitivos y descriptivos, utilizando mayúsculas al inicio de cada palabra como si fueran títulos (ej: "Introduccion A La Fisica Cuantica.md").
     *   Los links internos deben estar integrados de manera fluida en el texto, usando la sintaxis [texto_del_link](ruta_del_archivo.md). Utiliza nombres de link que tengan sentido en el contexto, aunque no sean exactamente iguales al nombre del archivo (ej: [gatos](Animales/Gatos.md), si el archivo se llama "Gatos Domesticos").
 
-2.  **Organización de Archivos en Carpetas:**
+2. **Organización de Archivos en Carpetas:**
     *   Puedes crear carpetas para estructurar la información de forma lógica y jerárquica. Ejemplo: \`animales/gatos.md\`, \`historia/roma_antigua.md\`.
     *   Decide de manera autónoma la estructura de carpetas más adecuada según el contenido y la información proporcionada.
 
-3.  **Consultas al Sistema de Archivos y Bóveda de Obsidian:**
-    *   Utiliza la función \`queryVault\` para buscar información específica dentro de la bóveda de Obsidian, archivos existentes o nombres de archivos.
-    *   Esta información debe usarse como contexto adicional para completar la tarea del usuario.
-    *   Puedes usar \`queryVault\` para verificar si un archivo existe antes de modificarlo.
-
-4.  **Uso de Modelo de Razonamiento:**
+3. **Uso de Modelo de Razonamiento:**
     *   Puedes llamar a un modelo de razonamiento cuando lo consideres necesario para tareas complejas o que requieran mayor análisis.
 
-5.  **Incorporación de Contexto:**
+4. **Incorporación de Contexto:**
     *   Puedes agregar información adicional al contexto durante el proceso para mejorar la calidad de tus respuestas.
 
-6.  **Formatos de Escritura Específicos:**
+5. **Formatos de Escritura Específicos:**
     *   Adapta el formato de escritura al contexto de la información:
         *   **Listas:** Para enumerar información, tareas, o puntos clave. Ejemplo:
             \`\`\`markdown
@@ -298,31 +298,27 @@ Eres un asistente inteligente diseñado para gestionar y organizar información 
             Más texto...
             \`\`\`
 
-7. **Comunicación con el Usuario:**
-    *   Utiliza la función \`tellUser\` para informar al usuario de las acciones tomadas. Los mensajes deben ser breves, claros y concisos. Ejemplo:
-         * "He creado el archivo \`Animales/Perros.md\` con la información solicitada."
-         *  "He modificado el archivo \`Calculo_Integral.md\`, añadiendo la nueva información."
-         *  "No he encontrado un archivo con ese nombre. ¿Quieres que cree uno nuevo?"
+6. **Comunicación con el Usuario:**
+    *   Realiza aclaraciones si has tomado alguna acción o necesitas responder alguna pregunta.
 
 **Prioridades:**
 
 *   La prioridad es mantener la información organizada y accesible.
 *   Asegúrate que los archivos creados y modificados sean útiles para el usuario.
-*   Documenta las acciones tomadas, a través de mensajes concisos usando la funcion \`tellUser\`.
 *   Cuando determines que el usuario ha solicitado algo ambiguo o que podria ser mas de una accion, pregunta para aclarar.
 
 **Ejemplo:**
 
 Si el usuario te dice: "Necesito información sobre los gatos", podrías:
-1.  Buscar en la bóveda si ya existe un archivo sobre gatos usando \`queryVault\`.
-2.  Si no existe, crear un archivo llamado \`Animales/Gatos Domesticos.md\` con información básica.
-3.  Informar al usuario: "He creado el archivo \`Animales/Gatos Domesticos.md\` con información básica sobre los gatos".
+1. Buscar en la bóveda si ya existe un archivo sobre gatos.
+2. Si no existe, crear un archivo llamado \`Animales/Gatos Domesticos.md\` con información básica.
+3. Aclarar: "He creado el archivo \`Animales/Gatos Domesticos.md\` con información básica sobre los gatos".
 `,
                 tools: [
                     {
                         functionDeclarations: [
                             {
-                                name: "createFile",
+                                name: "writeFile",
                                 description: "Crea un archivo en una ruta específica con un contenido determinado.",
                                 parameters: {
                                     type: SchemaType.OBJECT,
@@ -339,20 +335,20 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
                                     required: ["path", "content"],
                                 },
                             },
-                            {
-                                name: "tellUser",
-                                description: "Envía un mensaje al usuario.",
-                                parameters: {
-                                    type: SchemaType.OBJECT,
-                                    properties: {
-                                        message: {
-                                            type: SchemaType.STRING,
-                                            description: "El mensaje a enviar al usuario."
-                                        },
-                                    },
-                                    required: ["message"],
-                                },
-                            },
+                            // {
+                            //     name: "tellUser",
+                            //     description: "Envía un mensaje al usuario.",
+                            //     parameters: {
+                            //         type: SchemaType.OBJECT,
+                            //         properties: {
+                            //             message: {
+                            //                 type: SchemaType.STRING,
+                            //                 description: "El mensaje a enviar al usuario."
+                            //             },
+                            //         },
+                            //         required: ["message"],
+                            //     },
+                            // },
                         ],
                     },
                 ],
@@ -360,19 +356,41 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
             });
 
             // Start the ChatSession
-            this.chatSession = this.model.startChat();
+            this.chatSession = this.model.startChat({
+                history: [vaultContext,
+                    {
+                        role: 'model', // The role is 'user' because the user is providing the context
+                        parts: [{text:"Info recibida. En que puedo ayudarte?"}],
+                    }
+                ], // Pass the vault context as initial messages
+            });
         }
     }
 
-    private resetChatHistory() {
+    private async resetChatHistory() {
+        // Clear the chat and answer containers
         this.chatContainer.empty();
         this.answerContainer.empty();
-
+    
+        // Reinitialize the ChatSession with the updated vault context
         if (this.genAI) {
-            this.chatSession = this.model.startChat();
+            const vaultContext = await this.loadVaultContext(); // Reload the vault context
+    
+            this.chatSession = this.model.startChat({
+                history: [
+                    vaultContext, // Add the reloaded vault context
+                    {
+                        role: 'model', // The role is 'user' because the user is providing the context
+                        parts: [{ text: "Info recibida. En que puedo ayudarte?" }],
+                    },
+                ], // Pass the vault context as initial messages
+            });
         }
-
+    
+        // Adjust the chat container height
         this.adjustChatContainerHeight();
+    
+        // Notify the user that the chat history has been reset
         new Notice('Chat history reset successfully.');
     }
 
@@ -405,7 +423,7 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
     
         const content = card.createEl('div', {
             attr: {
-                style: 'word-wrap: break-word; white-space: pre-wrap; overflow-wrap: break-word;'
+                style: 'word-wrap: break-word; white-space: pre-wrap; overflow-wrap: break-word; width: 100%;' // Ensure the content wraps
             }
         });
     
@@ -416,7 +434,14 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
             const errorMessage = message as ErrorMessage;
             content.innerText = `[Error] ${errorMessage.error.message}`;
         } else {
-            content.innerText = `[${message.type === 'user' ? 'User' : 'Model'}] ${message.content}`;
+            // Render Markdown for user and model messages
+            const prefix = message.type === 'user' ? 'You: ' : 'Model: ';
+            MarkdownRenderer.renderMarkdown(
+                `${prefix}${message.content}`, // The Markdown content to render
+                content, // The container to render the Markdown into
+                '', // The file path (optional, can be an empty string)
+                this // The component context (usually `this`)
+            );
         }
     
         const removeButton = card.createEl('button', {
@@ -449,7 +474,37 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
         }
     }
 
-    private async processAudio() {
+    private async loadVaultContext(): Promise<Content> {
+        const parts: Part[] = [];
+    
+        // Add an introductory message
+        parts.push({ text: 'Datos del usuario:' });
+    
+        // Get all markdown files in the vault
+        const files = this.app.vault.getMarkdownFiles();
+    
+        // Iterate over each file
+        for (const file of files) {
+            // Read the file content
+            const content = await this.app.vault.read(file);
+    
+            // Add the file content to the parts
+            parts.push({ text: `[${file.name}]\n\`\`\`\n${content}\n\`\`\`` });
+        }
+    
+        // Add a closing message
+        parts.push({ text: 'FIN DE LOS DATOS' });
+    
+        // Return a single Content object with all parts
+        return {
+            role: 'user', // The role is 'user' because the user is providing the context
+            parts: parts,
+        };
+    }
+
+    private async processRequest() {
+
+
         if (!this.genAI || !this.chatSession) {
             const errorMessage: ErrorMessage = {
                 type: 'error',
@@ -509,14 +564,21 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
                                 },
                             });
                         } catch (error) {
-                            console.error('Error processing audio:', error);
-                            new Notice('Failed to process audio. Check the console for details.');
+                            const errorMessage: ErrorMessage = {
+                                type: 'error',
+                                timestamp: new Date(),
+                                content: `Failed to process audio. Error: ${error}`, // Include the error details
+                                error: error as Error,
+                            };
+                            this.addLogMessage(errorMessage, this.answerContainer); // Explicitly specify the chatContainer
+                            console.error('Error processing audio:', error); // Log the error to the console
+
                         }
                     }
                 }
             }
 
-            // If no content is found, show a notice and return
+            // If no content is found, show a LOG and return
             if (contentToSend.length === 0) {
                 const errorMessage: ErrorMessage = {
                     type: 'error',
@@ -542,8 +604,8 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
 
             // Define the functions that the model can call
             const functions: { [name: string]: Function } = {
-                createFile: this.createFile.bind(this),
-                tellUser: this.tellUser.bind(this),
+                writeFile: this.writeFile.bind(this),
+                // tellUser: this.tellUser.bind(this),
             };
 
             // Handle function calls in the response
@@ -559,20 +621,22 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
 
                             // Execute the function
                             const functionResponse = await functionRef(args);
-                            const functionMessage: FunctionMessage = {
-                                type: 'function',
-                                timestamp: new Date(),
-                                functionName: name,
-                                result: functionResponse,
-                                content: `Function "${name}" executed: ${functionResponse}`,
-                            };
-                            this.addLogMessage(functionMessage);
+                            
+                            
+                            // const functionMessage: FunctionMessage = {
+                            //     type: 'function',
+                            //     timestamp: new Date(),
+                            //     functionName: name,
+                            //     result: functionResponse,
+                            //     content: `Function "${name}" executed: ${functionResponse}`,
+                            // };
+                            // this.addLogMessage(functionMessage);
                         }
                     }
                 }
             }
 
-            new Notice('Processing complete.');
+            
             this.moveItemsToAnswerContainer(); // Move items to answer container after processing
 
         } catch (error) {
@@ -604,7 +668,7 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
         this.adjustChatContainerHeight();
     }
 
-    private async createFile(args: { path: string; content: string }): Promise<string> {
+    private async writeFile(args: { path: string; content: string }): Promise<string> {
         try {
             const contentWithNewlines = args.content.replace(/\\n/g, '\n');
             const folderPath = args.path.split('/').slice(0, -1).join('/');
@@ -621,9 +685,9 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
             const functionMessage: FunctionMessage = {
                 type: 'function',
                 timestamp: new Date(),
-                functionName: 'createFile',
+                functionName: 'writeFile',
                 result: `File created successfully at ${args.path}`,
-                content: `File created successfully at ${args.path}`,
+                content: `Fiile created successfully at ${args.path}`,
             };
             this.addLogMessage(functionMessage);
 
@@ -733,26 +797,25 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
     private addAudio(audioUrl: string) {
         const card = this.chatContainer.createEl('div', {
             attr: {
-                style: 'max-width: 80%; background: #444; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; position: relative;'
+                style: 'background: #444; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; position: relative;'
             }
         });
-
+    
         // Add remove button
         const removeButton = card.createEl('button', {
             attr: {
                 style: 'position: absolute; top: 5px; right: 5px; background: transparent; border: none; color: #fff; cursor: pointer; font-size: 16px; height:17px; width:17px;'
             }
         });
-
         removeButton.innerText = '×';
-
+    
         // Remove the card when the button is clicked
         removeButton.addEventListener('click', () => {
             card.remove();
             this.adjustChatContainerHeight();
         });
-
-        // Rest of the audio card setup...
+    
+        // Create an audio element (hidden)
         const audioElement = card.createEl('audio', {
             attr: {
                 src: audioUrl,
@@ -760,12 +823,14 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
                 style: 'display: none;'
             }
         });
-
+    
+        // Create a waveform container
         const waveformContainer = card.createEl('div', {
             attr: { style: 'flex: 1; height: 56px; margin-bottom: 10px;' }
         });
-
-        this.wavesurfer = WaveSurfer.create({
+    
+        // Create a new WaveSurfer instance for this audio card
+        const wavesurfer = WaveSurfer.create({
             container: waveformContainer,
             waveColor: '#555',
             progressColor: '#1e90ff',
@@ -777,7 +842,8 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
             interact: true,
             url: audioUrl,
         });
-
+    
+        // Create a play button for this audio card
         const playButton = card.createEl('button', {
             attr: { style: 'background: none; border: none; cursor: pointer; margin-left: 10px;' }
         });
@@ -786,32 +852,75 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
                 <path d="M8 5v14l11-7z"/>
             </svg>
         `;
-
+    
+        // Add click event listener to the play button
         playButton.addEventListener('click', () => {
-            if (this.wavesurfer) {
-                this.wavesurfer.playPause();
+            wavesurfer.playPause();
+        });
+    
+        // Update the play button icon based on WaveSurfer's play/pause state
+        wavesurfer.on('play', () => {
+            playButton.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
+                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                </svg>
+            `;
+        });
+        wavesurfer.on('pause', () => {
+            playButton.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
+                    <path d="M8 5v14l11-7z"/>
+                </svg>
+            `;
+        });
+    
+        // Store the wavesurfer instance on the card for later reference
+        (card as any).wavesurfer = wavesurfer;
+    
+        this.adjustChatContainerHeight();
+    }
+
+    private disableButtons() {
+        const buttons = this.containerEl.querySelectorAll('button');
+        buttons.forEach((button) => {
+            button.setAttribute('disabled', 'true');
+            button.style.opacity = '0.5'; // Visually indicate that the button is disabled
+            button.style.cursor = 'not-allowed';
+        });
+    }
+    
+    private enableButtons() {
+        const buttons = this.containerEl.querySelectorAll('button');
+        buttons.forEach((button) => {
+            button.removeAttribute('disabled');
+            button.style.opacity = '1'; // Restore button appearance
+            button.style.cursor = 'pointer';
+        });
+    }
+
+    private addLoadingIndicator() {
+        const loadingIndicator = this.answerContainer.createEl('div', {
+            attr: {
+                style: 'display: flex; justify-content: center; align-items: center; margin-top: 10px;'
             }
         });
-
-        if (this.wavesurfer) {
-            this.wavesurfer.on('play', () => {
-                playButton.innerHTML = `
-                    <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
-                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                    </svg>
-                `;
-            });
-            this.wavesurfer.on('pause', () => {
-                playButton.innerHTML = `
-                    <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
-                        <path d="M8 5v14l11-7z"/>
-                    </svg>
-                `;
-            });
-        }
-
-        this.currentAudioUrl = audioUrl;
-        this.adjustChatContainerHeight();
+    
+        // Create a spinning circle using CSS
+        loadingIndicator.innerHTML = `
+            <div style="border: 4px solid #f3f3f3; border-top: 4px solid #6200ee; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite;"></div>
+        `;
+    
+        // Add CSS for the spinning animation
+        const style = document.createElement('style');
+        style.innerHTML = `
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+        `;
+        this.containerEl.appendChild(style);
+    
+        return loadingIndicator;
     }
 
     private updatePlayButton(isPlaying: boolean) {
@@ -918,17 +1027,19 @@ class SampleSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Google API key')
-            .setDesc('It\'s a secret API key')
+            .setDesc('Enter your Google API key here.')
             .addText(text => {
                 text
                     .setPlaceholder('Enter your API key')
                     .setValue(this.plugin.settings.GOOGLE_API_KEY)
-                    .inputEl.setAttribute('type', 'password');
+                    // Remove the password attribute to make the input visible
+                    // .inputEl.setAttribute('type', 'password'); // Comment out or remove this line
                 text.onChange(async (value) => {
                     this.plugin.settings.GOOGLE_API_KEY = value;
                     await this.plugin.saveSettings();
                 });
             });
+            
     }
 }
 
