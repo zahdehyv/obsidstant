@@ -1,5 +1,5 @@
 import { App, Plugin, Notice, PluginSettingTab, Setting, ItemView, WorkspaceLeaf } from 'obsidian';
-import { GoogleGenerativeAI, SchemaType, FunctionCallingMode, ChatSession, Part } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, FunctionCallingMode, ChatSession, Part, GenerativeModel } from '@google/generative-ai';
 import WaveSurfer from 'wavesurfer.js';
 import Sortable from 'sortablejs';
 
@@ -11,19 +11,46 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
     GOOGLE_API_KEY: 'your-default-api-key',
 };
 
+// Define interfaces for different message types
+interface LogMessage {
+    timestamp: Date;
+    content: string;
+    type: 'user' | 'model' | 'function' | 'error'; // Add the type property
+}
+
+interface UserMessage extends LogMessage {
+    type: 'user'; // No need to redefine 'type' here
+}
+
+interface ModelMessage extends LogMessage {
+    type: 'model'; // No need to redefine 'type' here
+}
+
+interface FunctionMessage extends LogMessage {
+    type: 'function'; // No need to redefine 'type' here
+    functionName: string;
+    result: string;
+}
+
+interface ErrorMessage extends LogMessage {
+    type: 'error'; // No need to redefine 'type' here
+    error: Error;
+}
+
 class ChatbotView extends ItemView {
     private chatContainer: HTMLDivElement;
-    private answerContainer: HTMLDivElement; // New container for answers
+    private answerContainer: HTMLDivElement;
     private audioRecorder: AudioRecorder;
     private currentAudioUrl: string | null = null;
     private wavesurfer: WaveSurfer | null = null;
     private playButton: HTMLButtonElement | null = null;
     private genAI: GoogleGenerativeAI | null = null;
-    private chatSession: ChatSession | null = null; // ChatSession for multi-turn conversations
+    private chatSession: ChatSession | null = null;
     private textInput: HTMLTextAreaElement;
     private pictureButton: HTMLButtonElement;
     private sendButton: HTMLButtonElement;
     private processButton: HTMLButtonElement;
+    private model: GenerativeModel;
 
     constructor(leaf: WorkspaceLeaf, private googleApiKey: string) {
         super(leaf);
@@ -49,10 +76,8 @@ class ChatbotView extends ItemView {
         const { containerEl } = this;
         containerEl.empty();
 
-        // Set up the container for the view
         containerEl.style.display = 'flex';
         containerEl.style.flexDirection = 'column';
-        containerEl.style.justifyContent = 'flex-end';
         containerEl.style.height = '100%';
         containerEl.style.backgroundColor = '#1e1e1e';
         containerEl.style.color = '#ffffff';
@@ -67,7 +92,7 @@ class ChatbotView extends ItemView {
         // Chat container (sortable cards container for editing)
         this.chatContainer = containerEl.createEl('div', {
             attr: {
-                style: 'flex: 1; overflow-y: auto; padding: 10px; background: #2d2d2d; display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;'
+                style: 'flex: 0 0 auto; overflow-y: auto; padding: 10px; background: #2d2d2d; display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;'
             }
         });
 
@@ -140,58 +165,158 @@ class ChatbotView extends ItemView {
         });
 
         // Add the big process button below the input container
-        this.processButton = containerEl.createEl('button', {
+        const buttonContainer = containerEl.createEl('div', {
             attr: {
-                style: 'height:10%; width: 100%; background: #6200ee; color: white; border: none; border-radius: 4px; padding: 15px; font-size: 24px; cursor: pointer; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); transition: background 0.3s, box-shadow 0.3s; margin-top: 0px; margin-bottom: 0px;'
+                style: 'display: flex; gap: 10px; width: 100%; height: 10%; margin-top: 10px;'
             }
         });
-        this.processButton.innerText = 'PROCESS';
 
-        // Add hover and active effects for Material Design
-        this.processButton.addEventListener('mouseenter', () => {
-            this.processButton.style.backgroundColor = '#3700b3';
-            this.processButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-        });
-        this.processButton.addEventListener('mouseleave', () => {
-            this.processButton.style.backgroundColor = '#6200ee';
-            this.processButton.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)';
-        });
-        this.processButton.addEventListener('mousedown', () => {
-            this.processButton.style.backgroundColor = '#000000';
-            this.processButton.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.2)';
-        });
-        this.processButton.addEventListener('mouseup', () => {
-            this.processButton.style.backgroundColor = '#3700b3';
-            this.processButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-        });
+        // Add the PROCESS button
+this.processButton = buttonContainer.createEl('button', {
+    attr: {
+        style: 'flex: 1; height: 100%; background: #6200ee; color: white; border: none; border-radius: 4px; padding: 15px; font-size: 24px; cursor: pointer; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); transition: background 0.3s, box-shadow 0.3s; display: flex; align-items: center; justify-content: center;'
+    }
+});
+this.processButton.innerHTML = '✓'; // Checkmark symbol
 
-        // Handle process button click
-        this.processButton.addEventListener('click', async () => {
-            new Notice('SENDING REQUEST');
-            await this.processAudio();
-            this.moveItemsToAnswerContainer(); // Move items to answer container after processing
-        });
+// Add hover and active effects for Material Design
+this.processButton.addEventListener('mouseenter', () => {
+    this.processButton.style.backgroundColor = '#3700b3';
+    this.processButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+});
+this.processButton.addEventListener('mouseleave', () => {
+    this.processButton.style.backgroundColor = '#6200ee';
+    this.processButton.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)';
+});
+this.processButton.addEventListener('mousedown', () => {
+    this.processButton.style.backgroundColor = '#000000';
+    this.processButton.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.2)';
+});
+this.processButton.addEventListener('mouseup', () => {
+    this.processButton.style.backgroundColor = '#3700b3';
+    this.processButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+});
+
+// Handle process button click
+this.processButton.addEventListener('click', async () => {
+    new Notice('SENDING REQUEST');
+    await this.processAudio();
+});
+
+        // Add the RESET HISTORY button
+const resetButton = buttonContainer.createEl('button', {
+    attr: {
+        style: 'flex: 0 0 auto; height: 100%; background: #6200ee; color: white; border: none; border-radius: 4px; padding: 15px; font-size: 24px; cursor: pointer; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); transition: background 0.3s, box-shadow 0.3s; display: flex; align-items: center; justify-content: center;'
+    }
+});
+resetButton.innerHTML = '🔄'; // Refresh icon
+
+// Add hover and active effects for the reset button
+resetButton.addEventListener('mouseenter', () => {
+    resetButton.style.backgroundColor = '#3700b3';
+    resetButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+});
+resetButton.addEventListener('mouseleave', () => {
+    resetButton.style.backgroundColor = '#6200ee';
+    resetButton.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)';
+});
+resetButton.addEventListener('mousedown', () => {
+    resetButton.style.backgroundColor = '#000000';
+    resetButton.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.2)';
+});
+resetButton.addEventListener('mouseup', () => {
+    resetButton.style.backgroundColor = '#3700b3';
+    resetButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+});
+
+// Handle reset button click
+resetButton.addEventListener('click', () => {
+    this.resetChatHistory();
+});
 
         // Initialize the model and start the ChatSession
         if (this.genAI) {
-            const model = this.genAI.getGenerativeModel({
+            this.model = this.genAI.getGenerativeModel({
                 model: "gemini-2.0-flash-exp",
                 systemInstruction: `
-Eres un asistente inteligente con acceso a herramientas específicas para gestionar y manipular archivos, así como para comunicarte con el usuario. Entre tus capacidades, puedes:
+Eres un asistente inteligente diseñado para gestionar y organizar información dentro de un sistema de archivos, con especial enfoque en la creación y modificación de archivos Markdown (.md). Tienes acceso a diversas herramientas para realizar tus tareas de manera efectiva y eficiente.
 
-1. **Crear archivos**: Puedes generar archivos en una ruta específica con un contenido determinado utilizando la función \`createFile\`. Los archivos deben ser en formato Markdown (.md) y utilizar sus facilidades, como encabezados (#), listas (-), negritas (**texto**), enlaces ([[filename]]), etc.
-2. **Enviar mensajes al usuario**: Puedes comunicarte con el usuario de manera clara y directa utilizando la función \`tellUser\`. Los mensajes deben ser cortos, claros y concisos, evitando información innecesaria o extensa.
-3. **Organizar archivos en carpetas**: Puedes crear carpetas para organizar los archivos si es necesario. Por ejemplo, si el archivo contiene información sobre un perro, puedes guardarlo en \`animales/perro.md\`.
-4. **Documentar acciones**: Puedes crear un archivo que documente las acciones llevadas a cabo, como un registro de las tareas realizadas.
-5. **Tomar decisiones autónomas**: En algunas ocasiones, debes decidir por tu cuenta si es necesario crear archivos o carpetas para cumplir con la solicitud del usuario de manera óptima.
+**Funcionalidades Principales:**
 
-Recuerda que toda comunicación o información que debas proporcionar al usuario final debe realizarse exclusivamente a través de la función \`tellUser\`. Los mensajes enviados a través de \`tellUser\` deben ser cortos y claros.
+1.  **Creación y Modificación de Archivos Markdown:**
+    *   Utiliza la función \`createFile\` para generar nuevos archivos .md en la ruta especificada.
+    *   Si un archivo ya existe en la ruta dada, la función \`createFile\` lo modificará, **conservando el contenido original**. Debes tener en cuenta el contenido previo al realizar cualquier modificación.
+    *   Aprovecha las funcionalidades de Markdown para estructurar el contenido: encabezados (#, ##, ###), listas (-, *), negritas (**texto**), cursivas (*texto*), enlaces ([texto](ruta_del_archivo.md)), etc.
+    *   Los nombres de archivo deben ser intuitivos y descriptivos, utilizando mayúsculas al inicio de cada palabra como si fueran títulos (ej: "Introduccion A La Fisica Cuantica.md").
+    *   Los links internos deben estar integrados de manera fluida en el texto, usando la sintaxis [texto_del_link](ruta_del_archivo.md). Utiliza nombres de link que tengan sentido en el contexto, aunque no sean exactamente iguales al nombre del archivo (ej: [gatos](Animales/Gatos.md), si el archivo se llama "Gatos Domesticos").
 
-Cuando crees archivos, asegúrate de usar nombres que reflejen claramente el contenido del archivo. Por ejemplo, si el archivo contiene información sobre un informe financiero, un nombre adecuado podría ser \`informe_financiero_2023.md\`. Esto ayudará al usuario a identificar fácilmente el propósito del archivo.
+2.  **Organización de Archivos en Carpetas:**
+    *   Puedes crear carpetas para estructurar la información de forma lógica y jerárquica. Ejemplo: \`animales/gatos.md\`, \`historia/roma_antigua.md\`.
+    *   Decide de manera autónoma la estructura de carpetas más adecuada según el contenido y la información proporcionada.
 
-Además, cuando generes contenido para archivos, utiliza formato Markdown para mejorar la legibilidad y estructura del texto. Por ejemplo, usa encabezados (#, ##), listas (-, *), negritas (**texto**) y otros elementos de Markdown para organizar la información de manera clara y profesional.
+3.  **Consultas al Sistema de Archivos y Bóveda de Obsidian:**
+    *   Utiliza la función \`queryVault\` para buscar información específica dentro de la bóveda de Obsidian, archivos existentes o nombres de archivos.
+    *   Esta información debe usarse como contexto adicional para completar la tarea del usuario.
+    *   Puedes usar \`queryVault\` para verificar si un archivo existe antes de modificarlo.
 
-Como gestor de archivos, evalúa cuidadosamente si es necesario crear nuevos archivos o realizar cambios en los existentes. Solo procede con estas acciones si son esenciales para cumplir con la solicitud del usuario o si el usuario lo solicita explícitamente. Prioriza la claridad y la eficiencia en tu gestión, asegurándote de que todas las acciones estén justificadas y sean útiles para el usuario.
+4.  **Uso de Modelo de Razonamiento:**
+    *   Puedes llamar a un modelo de razonamiento cuando lo consideres necesario para tareas complejas o que requieran mayor análisis.
+
+5.  **Incorporación de Contexto:**
+    *   Puedes agregar información adicional al contexto durante el proceso para mejorar la calidad de tus respuestas.
+
+6.  **Formatos de Escritura Específicos:**
+    *   Adapta el formato de escritura al contexto de la información:
+        *   **Listas:** Para enumerar información, tareas, o puntos clave. Ejemplo:
+            \`\`\`markdown
+            - Item 1
+            - Item 2
+            - Item 3
+            \`\`\`
+        *   **Wikipedia:** Para artículos enciclopédicos, utilizando encabezados y secciones. Ejemplo:
+            \`\`\`markdown
+            # Título del Artículo
+            ## Introducción
+            Texto introductorio...
+            ## Historia
+            Texto sobre la historia...
+            \`\`\`
+        *   **Paper (Artículo Académico):** Para documentos con un formato formal, con secciones como introducción, método, resultados, discusión y conclusiones. Ejemplo:
+            \`\`\`markdown
+            # Título del Paper
+            ## Introducción
+            Texto introductorio y objetivos...
+            ## Metodología
+            Texto sobre la metodología...
+            \`\`\`
+        *   **Blog:** Para entradas de blog más informales, con un estilo conversacional. Ejemplo:
+            \`\`\`markdown
+            # Título del Blog Post
+            ## Introducción
+            Texto de introducción...
+            ## Cuerpo del Post
+            Más texto...
+            \`\`\`
+
+7. **Comunicación con el Usuario:**
+    *   Utiliza la función \`tellUser\` para informar al usuario de las acciones tomadas. Los mensajes deben ser breves, claros y concisos. Ejemplo:
+         * "He creado el archivo \`Animales/Perros.md\` con la información solicitada."
+         *  "He modificado el archivo \`Calculo_Integral.md\`, añadiendo la nueva información."
+         *  "No he encontrado un archivo con ese nombre. ¿Quieres que cree uno nuevo?"
+
+**Prioridades:**
+
+*   La prioridad es mantener la información organizada y accesible.
+*   Asegúrate que los archivos creados y modificados sean útiles para el usuario.
+*   Documenta las acciones tomadas, a través de mensajes concisos usando la funcion \`tellUser\`.
+*   Cuando determines que el usuario ha solicitado algo ambiguo o que podria ser mas de una accion, pregunta para aclarar.
+
+**Ejemplo:**
+
+Si el usuario te dice: "Necesito información sobre los gatos", podrías:
+1.  Buscar en la bóveda si ya existe un archivo sobre gatos usando \`queryVault\`.
+2.  Si no existe, crear un archivo llamado \`Animales/Gatos Domesticos.md\` con información básica.
+3.  Informar al usuario: "He creado el archivo \`Animales/Gatos Domesticos.md\` con información básica sobre los gatos".
 `,
                 tools: [
                     {
@@ -235,114 +360,311 @@ Como gestor de archivos, evalúa cuidadosamente si es necesario crear nuevos arc
             });
 
             // Start the ChatSession
-            this.chatSession = model.startChat();
+            this.chatSession = this.model.startChat();
         }
+    }
+
+    private resetChatHistory() {
+        this.chatContainer.empty();
+        this.answerContainer.empty();
+
+        if (this.genAI) {
+            this.chatSession = this.model.startChat();
+        }
+
+        this.adjustChatContainerHeight();
+        new Notice('Chat history reset successfully.');
     }
 
     private async handleTextInput() {
         const text = this.textInput.value.trim();
         if (text && this.chatSession) {
-            this.addTextCard(text, 'user'); // Add user message to the chat container
+            const userMessage: UserMessage = {
+                type: 'user',
+                timestamp: new Date(),
+                content: text,
+            };
+            this.addLogMessage(userMessage);
             this.textInput.value = '';
-
-            // Send the message to the ChatSession
-            // const result = await this.chatSession.sendMessage(text);
-            // const responseText = result.response.text();
-            // console.log("generated")
-            // console.log(responseText)
-
-            // Add the model's response to the chat container
-            // this.addTextCard(responseText, 'model');
         }
     }
 
-    private addAudio(audioUrl: string) {
-        const card = this.chatContainer.createEl('div', {
+    private addLogMessage(message: LogMessage, targetContainer: HTMLElement = this.chatContainer) {
+        const card = targetContainer.createEl('div', {
             attr: {
-                style: 'background: #444; padding: 10px; border-radius: 8px; margin-bottom: 10px;'
+                style: `background: ${this.getMessageColor(message)}; padding: 10px; border-radius: 8px; color: #fff; margin-bottom: 10px; position: relative; word-wrap: break-word; white-space: pre-wrap; overflow-wrap: break-word;`
             }
         });
     
-        // Add the standard <audio> element for playback (hidden)
-        const audioElement = card.createEl('audio', {
+        const timestamp = card.createEl('div', {
             attr: {
-                src: audioUrl,
-                controls: 'true', // Enable playback controls
-                style: 'display: none;' // Hide the <audio> element
+                style: 'font-size: 0.8em; color: #ccc; margin-bottom: 5px;'
+            }
+        });
+        timestamp.innerText = message.timestamp.toLocaleString();
+    
+        const content = card.createEl('div', {
+            attr: {
+                style: 'word-wrap: break-word; white-space: pre-wrap; overflow-wrap: break-word;'
             }
         });
     
-        // Add a container for the WaveSurfer waveform
-        const waveformContainer = card.createEl('div', {
-            attr: { style: 'width: 100%; height: 100px; margin-bottom: 10px;' }
-        });
+        if (message.type === 'function') {
+            const functionMessage = message as FunctionMessage;
+            content.innerText = `[Function] ${functionMessage.functionName}: ${functionMessage.result}`;
+        } else if (message.type === 'error') {
+            const errorMessage = message as ErrorMessage;
+            content.innerText = `[Error] ${errorMessage.error.message}`;
+        } else {
+            content.innerText = `[${message.type === 'user' ? 'User' : 'Model'}] ${message.content}`;
+        }
     
-        // Initialize WaveSurfer
-        this.wavesurfer = WaveSurfer.create({
-            container: waveformContainer,
-            waveColor: '#555',
-            progressColor: '#1e90ff',
-            barWidth: 2,
-            barHeight: 1,
-            barGap: 2,
-            height: 100,
-            cursorWidth: 0,
-            interact: true,
-            url: audioUrl,
-        });
-    
-        // Add a play/pause button for WaveSurfer
-        const playButton = card.createEl('button', {
-            attr: { style: 'background: none; border: none; cursor: pointer; margin-right: 10px;' }
-        });
-        playButton.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
-                <path d="M8 5v14l11-7z"/>
-            </svg>
-        `;
-    
-        playButton.addEventListener('click', () => {
-            if (this.wavesurfer) {
-                this.wavesurfer.playPause();
+        const removeButton = card.createEl('button', {
+            attr: {
+                style: 'position: absolute; top: 5px; right: 5px; background: transparent; border: none; color: #fff; cursor: pointer; font-size: 16px; width: 17px; height: 17px;'
             }
         });
+        removeButton.innerText = '×';
     
-        // Update the play button icon based on playback state
-        if (this.wavesurfer) {
-            this.wavesurfer.on('play', () => {
-                playButton.innerHTML = `
-                    <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
-                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                    </svg>
-                `;
-            });
-            this.wavesurfer.on('pause', () => {
-                playButton.innerHTML = `
-                    <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
-                        <path d="M8 5v14l11-7z"/>
-                    </svg>
-                `;
-            });
-        }
+        removeButton.addEventListener('click', () => {
+            card.remove();
+            this.adjustChatContainerHeight();
+        });
     
-        this.currentAudioUrl = audioUrl;
+        this.adjustChatContainerHeight();
     }
-    
-    private updatePlayButton(isPlaying: boolean) {
-        if (this.playButton) {
-            this.playButton.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
-                    <path d="${isPlaying ? 'M6 19h4V5H6v14zm8-14v14h4V5h-4z' : 'M8 5v14l11-7z'}"/>
-                </svg>
-            `;
+
+    private getMessageColor(message: LogMessage): string {
+        switch (message.type) {
+            case 'user':
+                return '#007bff'; // Blue for user messages
+            case 'model':
+                return '#28a745'; // Green for model messages
+            case 'function':
+                return '#ffc107'; // Yellow for function executions
+            case 'error':
+                return '#dc3545'; // Red for errors
+            default:
+                return '#444'; // Default color
         }
     }
+
+    private async processAudio() {
+        if (!this.genAI || !this.chatSession) {
+            const errorMessage: ErrorMessage = {
+                type: 'error',
+                timestamp: new Date(),
+                content: 'Google API key is not set or ChatSession is not initialized.',
+                error: new Error('Google API key is not set or ChatSession is not initialized.'),
+            };
+            this.addLogMessage(errorMessage, this.answerContainer);
+            return;
+        }
+
+        try {
+            // Collect all elements from the chat container and convert HTMLCollection to an array
+            const elements = Array.from(this.chatContainer.children);
+
+            // Prepare an array to hold the content to be sent to the ChatSession
+            const contentToSend: (string | Part)[] = [];
+
+            // Iterate through each element in the chat container
+            for (const element of elements) {
+                if (element instanceof HTMLElement && element.tagName === 'DIV') {
+                    // Handle text messages
+                    if (element.textContent && !element.querySelector('img') && !element.querySelector('audio')) {
+                        contentToSend.push({ text: element.textContent });
+                    }
+
+                    // Handle images
+                    const imgElement = element.querySelector('img');
+                    if (imgElement && imgElement instanceof HTMLImageElement && imgElement.src) {
+                        const base64Image = imgElement.src.split(',')[1]; // Extract base64 data
+                        contentToSend.push({
+                            inlineData: {
+                                data: base64Image,
+                                mimeType: 'image/png', // Adjust MIME type if necessary
+                            },
+                        });
+                    }
+
+                    // Handle audio
+                    const audioElement = element.querySelector('audio');
+                    if (audioElement && audioElement instanceof HTMLAudioElement && audioElement.src) {
+                        try {
+                            const response = await fetch(audioElement.src);
+                            if (!response.ok) {
+                                throw new Error(`Failed to fetch audio: ${response.statusText}`);
+                            }
+
+                            const blob = await response.blob();
+                            const arrayBuffer = await blob.arrayBuffer();
+                            const base64Audio = this.arrayBufferToBase64(arrayBuffer);
+
+                            // Add the audio data as inlineData
+                            contentToSend.push({
+                                inlineData: {
+                                    data: base64Audio,
+                                    mimeType: blob.type || 'audio/wav', // Use the blob type or fallback to 'audio/wav'
+                                },
+                            });
+                        } catch (error) {
+                            console.error('Error processing audio:', error);
+                            new Notice('Failed to process audio. Check the console for details.');
+                        }
+                    }
+                }
+            }
+
+            // If no content is found, show a notice and return
+            if (contentToSend.length === 0) {
+                const errorMessage: ErrorMessage = {
+                    type: 'error',
+                    timestamp: new Date(),
+                    content: 'No content to process.',
+                    error: new Error('No content to process.'),
+                };
+                this.addLogMessage(errorMessage, this.answerContainer);
+                return;
+            }
+
+            contentToSend.push({ text: "INSERT_INPUT_HERE" });
+            const result = await this.chatSession.sendMessage(contentToSend);
+            console.log("result");
+            console.log(result);
+            const modelText: ModelMessage = {
+                type: 'model',
+                timestamp: new Date(),
+                content: result.response.text(),
+            };
+            this.addLogMessage(modelText);
+
+
+            // Define the functions that the model can call
+            const functions: { [name: string]: Function } = {
+                createFile: this.createFile.bind(this),
+                tellUser: this.tellUser.bind(this),
+            };
+
+            // Handle function calls in the response
+            if (result.response.candidates) {
+                for (const candidate of result.response.candidates) {
+                    for (const part of candidate.content.parts) {
+                        if (part.functionCall) {
+                            const { name, args } = part.functionCall;
+                            const functionRef = functions[name];
+                            if (!functionRef) {
+                                throw new Error(`Unknown function "${name}"`);
+                            }
+
+                            // Execute the function
+                            const functionResponse = await functionRef(args);
+                            const functionMessage: FunctionMessage = {
+                                type: 'function',
+                                timestamp: new Date(),
+                                functionName: name,
+                                result: functionResponse,
+                                content: `Function "${name}" executed: ${functionResponse}`,
+                            };
+                            this.addLogMessage(functionMessage);
+                        }
+                    }
+                }
+            }
+
+            new Notice('Processing complete.');
+            this.moveItemsToAnswerContainer(); // Move items to answer container after processing
+
+        } catch (error) {
+            const errorMessage: ErrorMessage = {
+                type: 'error',
+                timestamp: new Date(),
+                content: `Failed to process content with Gemini. Error: ${error}`, // Include the error details
+                error: error as Error,
+            };
+            this.addLogMessage(errorMessage, this.answerContainer); // Explicitly specify the chatContainer
+            console.error('Error processing content:', error); // Log the error to the console
+        }
+    }
+
+    private adjustChatContainerHeight() {
+        if (this.chatContainer.children.length === 0) {
+            this.chatContainer.style.flex = '0 0 auto';
+            this.chatContainer.style.height = '0';
+        } else {
+            this.chatContainer.style.flex = '1';
+            this.chatContainer.style.height = 'auto';
+        }
+    }
+
+    private moveItemsToAnswerContainer() {
+        while (this.chatContainer.firstChild) {
+            this.answerContainer.appendChild(this.chatContainer.firstChild);
+        }
+        this.adjustChatContainerHeight();
+    }
+
+    private async createFile(args: { path: string; content: string }): Promise<string> {
+        try {
+            const contentWithNewlines = args.content.replace(/\\n/g, '\n');
+            const folderPath = args.path.split('/').slice(0, -1).join('/');
+
+            if (folderPath) {
+                const folderExists = await this.app.vault.adapter.exists(folderPath);
+                if (!folderExists) {
+                    await this.app.vault.createFolder(folderPath);
+                }
+            }
+
+            await this.app.vault.adapter.write(args.path, contentWithNewlines);
+
+            const functionMessage: FunctionMessage = {
+                type: 'function',
+                timestamp: new Date(),
+                functionName: 'createFile',
+                result: `File created successfully at ${args.path}`,
+                content: `File created successfully at ${args.path}`,
+            };
+            this.addLogMessage(functionMessage);
+
+            return `File created successfully at ${args.path}`;
+        } catch (error) {
+            const errorMessage: ErrorMessage = {
+                type: 'error',
+                timestamp: new Date(),
+                content: `Failed to create file: ${error}`,
+                error: error as Error,
+            };
+            this.addLogMessage(errorMessage, this.answerContainer);
+            throw new Error(`Failed to create file: ${error}`);
+        }
+    }
+
+    private tellUser(args: { message: string }): string {
+        const modelMessage: ModelMessage = {
+            type: 'model',
+            timestamp: new Date(),
+            content: args.message,
+        };
+        this.addLogMessage(modelMessage);
+        return `User notified with message: ${args.message}`;
+    }
+
+    private arrayBufferToBase64(buffer: ArrayBuffer): string {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    }
+
     private handlePictureUpload() {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
         fileInput.accept = 'image/*';
         fileInput.style.display = 'none';
-    
+
         fileInput.addEventListener('change', async (e) => {
             const file = (e.target as HTMLInputElement).files?.[0];
             if (file) {
@@ -350,10 +672,10 @@ Como gestor de archivos, evalúa cuidadosamente si es necesario crear nuevos arc
                 this.addImageCard(base64Image);
             }
         });
-    
+
         fileInput.click();
     }
-    
+
     private async fileToBase64(file: File): Promise<string> {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -370,187 +692,136 @@ Como gestor de archivos, evalúa cuidadosamente si es necesario crear nuevos arc
             reader.readAsDataURL(file);
         });
     }
-    
+
     private addImageCard(base64Image: string) {
         const card = this.chatContainer.createEl('div', {
             attr: {
-                style: 'background: #444; padding: 10px; border-radius: 8px;'
+                style: 'max-width: 40%; background: #444; padding: 10px; border-radius: 8px; margin-bottom: 10px; position: relative;'
             }
         });
-        const img = card.createEl('img', {
+
+        // Add remove button
+        const removeButton = card.createEl('button', {
+            attr: {
+                style: 'position: absolute; top: 5px; right: 5px; background: none; border: none; color: #fff; cursor: pointer; font-size: 16px; width: 17px; height: 17px;'
+            }
+        });
+        removeButton.innerText = '×';
+
+        // Remove the card when the button is clicked
+        removeButton.addEventListener('click', () => {
+            card.remove();
+            this.adjustChatContainerHeight();
+        });
+
+        const imageContainer = card.createEl('div', {
+            attr: {
+                style: 'display: flex; flex-direction: column; align-items: center; gap: 10px;'
+            }
+        });
+
+        const img = imageContainer.createEl('img', {
             attr: {
                 src: base64Image,
-                style: 'max-width: 100%; border-radius: 4px;'
+                style: 'max-width: 70%; border-radius: 4px; cursor: pointer;'
             }
         });
-    }
-    
-    private async processAudio() {
-        if (!this.genAI || !this.chatSession) {
-            new Notice('Google API key is not set or ChatSession is not initialized.');
-            return;
-        }
-    
-        try {
-            // Collect all elements from the chat container and convert HTMLCollection to an array
-            const elements = Array.from(this.chatContainer.children);
-    
-            // Prepare an array to hold the content to be sent to the ChatSession
-            const contentToSend: (string | Part)[] = [];
-    
-            // Iterate through each element in the chat container
-            for (const element of elements) {
-                if (element instanceof HTMLElement && element.tagName === 'DIV') {
-                    // Handle text messages
-                    if (element.textContent && !element.querySelector('img') && !element.querySelector('audio')) {
-                        contentToSend.push({text: element.textContent}); // Add text content only if no image or audio is present
-                    }
-    
-                    // Handle images
-                    const imgElement = element.querySelector('img');
-                    if (imgElement && imgElement instanceof HTMLImageElement && imgElement.src) {
-                        const base64Image = imgElement.src.split(',')[1]; // Extract base64 data
-                        contentToSend.push({
-                            inlineData: {
-                                data: base64Image,
-                                mimeType: 'image/png', // Adjust MIME type if necessary
-                            },
-                        });
-                    }
-    
-                    // Handle audio
-                    const audioElement = element.querySelector('audio');
-                    if (audioElement && audioElement instanceof HTMLAudioElement && audioElement.src) {
-                        try {
-                            const response = await fetch(audioElement.src);
-                            if (!response.ok) {
-                                throw new Error(`Failed to fetch audio: ${response.statusText}`);
-                            }
-    
-                            const blob = await response.blob();
-                            const arrayBuffer = await blob.arrayBuffer();
-                            const base64Audio = this.arrayBufferToBase64(arrayBuffer);
-    
-                            // Log the audio data for debugging
-                            // console.log('Audio data:', {
-                            //     src: audioElement.src,
-                            //     size: blob.size,
-                            //     type: blob.type,
-                            //     base64Length: base64Audio.length,
-                            // });
-    
-                            // Add the audio data as inlineData
-                            contentToSend.push({
-                                inlineData: {
-                                    data: base64Audio,
-                                    mimeType: blob.type || 'audio/wav', // Use the blob type or fallback to 'audio/wav'
-                                },
-                            });
-                        } catch (error) {
-                            console.error('Error processing audio:', error);
-                            new Notice('Failed to process audio. Check the console for details.');
-                        }
-                    }
-                }
-            }
-    
-            // If no content is found, show a notice and return
-            if (contentToSend.length === 0) {
-                new Notice('No content to process.');
-                return;
-            }
-    
-            // Send all content to the ChatSession
-            // console.log("contentToSend");
-            // console.log(contentToSend);
-            contentToSend.push({text: "INSERT_INPUT_HERE"});
-            const result = await this.chatSession.sendMessage(contentToSend);
-            // console.log("result.response");
-            // console.log(result.response);
-            
-            // Define the functions that the model can call
-        const functions: { [name: string]: Function } = {
-            createFile: this.createFile.bind(this),
-            tellUser: this.tellUser.bind(this),
-        };
 
-        // Handle function calls in the response
-        if (result.response.candidates) {
-            for (const candidate of result.response.candidates) {
-                for (const part of candidate.content.parts) {
-                    if (part.functionCall) {
-                        const { name, args } = part.functionCall;
-                        const functionRef = functions[name];
-                        if (!functionRef) {
-                            throw new Error(`Unknown function "${name}"`);
-                        }
-
-                        // Execute the function
-                        const functionResponse = await functionRef(args);
-                        // new Notice(`Function "${name}" executed: ${functionResponse}`);
-                    }
-                }
-            }
-        }
-            // Display the model's response
-            // const responseText = result.response.text();
-            // if (responseText != "")
-            // {this.addTextCard(responseText, 'model');} // Add the model's response to the chat container
-            new Notice('Processing complete.');
-        } catch (error) {
-            new Notice('Failed to process content with Gemini.');
-            console.error('Error processing content:', error);
-        }
+        this.adjustChatContainerHeight();
     }
 
-    private addTextCard(text: string, role: 'user' | 'model') {
+    private addAudio(audioUrl: string) {
         const card = this.chatContainer.createEl('div', {
             attr: {
-                style: `background: ${role === 'user' ? '#444' : '#333'}; padding: 10px; border-radius: 8px; color: #fff; margin-bottom: 10px;`
+                style: 'max-width: 80%; background: #444; padding: 10px; border-radius: 8px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; position: relative;'
             }
         });
-        card.innerText = `${role === 'user' ? 'You: ' : 'Model: '}${text}`;
-    }
 
-    private moveItemsToAnswerContainer() {
-        while (this.chatContainer.firstChild) {
-            this.answerContainer.appendChild(this.chatContainer.firstChild);
-        }
-    }
-
-    private async createFile(args: { path: string; content: string }): Promise<string> {
-        try {
-            const contentWithNewlines = args.content.replace(/\\n/g, '\n');
-            const folderPath = args.path.split('/').slice(0, -1).join('/');
-
-            if (folderPath) {
-                const folderExists = await this.app.vault.adapter.exists(folderPath);
-                if (!folderExists) {
-                    await this.app.vault.createFolder(folderPath);
-                    // new Notice(`Created folder: ${folderPath}`);
-                }
+        // Add remove button
+        const removeButton = card.createEl('button', {
+            attr: {
+                style: 'position: absolute; top: 5px; right: 5px; background: transparent; border: none; color: #fff; cursor: pointer; font-size: 16px; height:17px; width:17px;'
             }
+        });
 
-            await this.app.vault.adapter.write(args.path, contentWithNewlines);
-            new Notice(`File created successfully at ${args.path}`);
-            return `File created successfully at ${args.path}`;
-        } catch (error) {
-            throw new Error(`Failed to create file: ${error}`);
+        removeButton.innerText = '×';
+
+        // Remove the card when the button is clicked
+        removeButton.addEventListener('click', () => {
+            card.remove();
+            this.adjustChatContainerHeight();
+        });
+
+        // Rest of the audio card setup...
+        const audioElement = card.createEl('audio', {
+            attr: {
+                src: audioUrl,
+                controls: 'true',
+                style: 'display: none;'
+            }
+        });
+
+        const waveformContainer = card.createEl('div', {
+            attr: { style: 'flex: 1; height: 56px; margin-bottom: 10px;' }
+        });
+
+        this.wavesurfer = WaveSurfer.create({
+            container: waveformContainer,
+            waveColor: '#555',
+            progressColor: '#1e90ff',
+            barWidth: 2,
+            barHeight: 1,
+            barGap: 2,
+            height: 50,
+            cursorWidth: 0,
+            interact: true,
+            url: audioUrl,
+        });
+
+        const playButton = card.createEl('button', {
+            attr: { style: 'background: none; border: none; cursor: pointer; margin-left: 10px;' }
+        });
+        playButton.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
+                <path d="M8 5v14l11-7z"/>
+            </svg>
+        `;
+
+        playButton.addEventListener('click', () => {
+            if (this.wavesurfer) {
+                this.wavesurfer.playPause();
+            }
+        });
+
+        if (this.wavesurfer) {
+            this.wavesurfer.on('play', () => {
+                playButton.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                    </svg>
+                `;
+            });
+            this.wavesurfer.on('pause', () => {
+                playButton.innerHTML = `
+                    <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
+                        <path d="M8 5v14l11-7z"/>
+                    </svg>
+                `;
+            });
         }
+
+        this.currentAudioUrl = audioUrl;
+        this.adjustChatContainerHeight();
     }
 
-    private tellUser(args: { message: string }): string {
-        this.addTextCard(args.message, 'model'); // Add the message to the chat container in the "model" role
-        return `User notified with message: ${args.message}`;
-    }
-
-    private arrayBufferToBase64(buffer: ArrayBuffer): string {
-        let binary = '';
-        const bytes = new Uint8Array(buffer);
-        for (let i = 0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
+    private updatePlayButton(isPlaying: boolean) {
+        if (this.playButton) {
+            this.playButton.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
+                    <path d="${isPlaying ? 'M6 19h4V5H6v14zm8-14v14h4V5h-4z' : 'M8 5v14l11-7z'}"/>
+                </svg>
+            `;
         }
-        return btoa(binary);
     }
 }
 
