@@ -1,7 +1,71 @@
-import { App, Plugin, Notice, PluginSettingTab, Setting, ItemView, WorkspaceLeaf, MarkdownRenderer } from 'obsidian';
+
 import { GoogleGenerativeAI, SchemaType, FunctionCallingMode, ChatSession, Part, GenerativeModel, Content } from '@google/generative-ai';
 import WaveSurfer from 'wavesurfer.js';
 import Sortable from 'sortablejs';
+
+import DiffMatchPatch from 'diff-match-patch'; // Default import
+
+import { App, Plugin, Notice, PluginSettingTab, Setting, ItemView, WorkspaceLeaf, MarkdownRenderer, Modal, ButtonComponent } from 'obsidian'; // Make sure Modal and ButtonComponent are here
+
+class ConfirmModal extends Modal {
+    diffHtml: string;
+    filePath: string;
+    fileContent: string;
+    onSubmit: (confirmed: boolean) => void;
+
+    constructor(app: App, diffHtml: string, filePath: string, fileContent: string, onSubmit: (confirmed: boolean) => void) {
+        super(app);
+        this.diffHtml = diffHtml;
+        this.filePath = filePath;
+        this.fileContent = fileContent;
+        this.onSubmit = onSubmit;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        contentEl.createEl('h2', { text: `Confirm File Creation/Modification: ${this.filePath}` });
+
+        const diffContainer = contentEl.createEl('div', { cls: 'diff-container' });
+        diffContainer.innerHTML = this.diffHtml; // Set the HTML diff content
+        contentEl.appendChild(diffContainer);
+
+        // Style the diff container
+        diffContainer.style.overflow = 'auto';
+        diffContainer.style.maxHeight = '500px';
+        diffContainer.style.border = '1px solid #ccc';
+        diffContainer.style.padding = '10px';
+        diffContainer.style.fontFamily = 'monospace'; // Use a monospace font
+
+        // Buttons for confirmation
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+        new ButtonComponent(buttonContainer)
+            .setButtonText('Confirm')
+            .setCta()
+            .onClick(() => {
+                this.close();
+                this.onSubmit(true);
+            });
+
+        new ButtonComponent(buttonContainer)
+            .setButtonText('Cancel')
+            .onClick(() => {
+                this.close();
+                this.onSubmit(false);
+            });
+
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.justifyContent = 'flex-end';
+        buttonContainer.style.marginTop = '10px';
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
 
 interface MyPluginSettings {
     GOOGLE_API_KEY: string;
@@ -36,6 +100,7 @@ interface ErrorMessage extends LogMessage {
     type: 'error'; // No need to redefine 'type' here
     error: Error;
 }
+
 
 class ChatbotView extends ItemView {
     private chatContainer: HTMLDivElement;
@@ -669,40 +734,103 @@ Si el usuario te dice: "Necesito información sobre los gatos", podrías:
     }
 
     private async writeFile(args: { path: string; content: string }): Promise<string> {
-        try {
-            const contentWithNewlines = args.content.replace(/\\n/g, '\n');
-            const folderPath = args.path.split('/').slice(0, -1).join('/');
-
-            if (folderPath) {
-                const folderExists = await this.app.vault.adapter.exists(folderPath);
-                if (!folderExists) {
-                    await this.app.vault.createFolder(folderPath);
+        return new Promise(async (resolve, reject) => {
+            try {
+                const contentWithNewlines = args.content.replace(/\\n/g, '\n');
+                const folderPath = args.path.split('/').slice(0, -1).join('/');
+                const filePath = args.path;
+    
+                if (folderPath) {
+                    const folderExists = await this.app.vault.adapter.exists(folderPath);
+                    if (!folderExists) {
+                        await this.app.vault.createFolder(folderPath);
+                    }
                 }
+    
+                let existingContent = '';
+                const fileExists = await this.app.vault.adapter.exists(filePath);
+                if (fileExists) {
+                    existingContent = await this.app.vault.adapter.read(filePath);
+                }
+    
+                // Use diff-match-patch to generate the diff
+                const dmp = new DiffMatchPatch();
+                const diff = dmp.diff_main(existingContent, contentWithNewlines);
+                dmp.diff_cleanupSemantic(diff);
+    
+                // Function to convert the diff array to styled HTML
+                const diffToHTML = (diffArray: [number, string][]): string => {
+                    let html = '';
+                    for (const [op, text] of diffArray) {
+                        switch (op) {
+                            case DiffMatchPatch.DIFF_INSERT:
+                                html += `<ins style="background-color:#d0e8d4; color:#1e6d2b;">${text}</ins>`;
+                                break;
+                            case DiffMatchPatch.DIFF_DELETE:
+                                html += `<del style="background-color:#f9d0c4; color:#9a050f;">${text}</del>`;
+                                break;
+                            case DiffMatchPatch.DIFF_EQUAL:
+                                html += `<span>${text}</span>`;
+                                break;
+                        }
+                    }
+                    return html;
+                };
+    
+                const diffHtml = diffToHTML(diff);
+    
+                new ConfirmModal(this.app, diffHtml, filePath, contentWithNewlines, async (confirmed) => {
+                    if (confirmed) {
+                        try {
+                            await this.app.vault.adapter.write(filePath, contentWithNewlines);
+    
+                            const functionMessage: FunctionMessage = {
+                                type: 'function',
+                                timestamp: new Date(),
+                                functionName: 'writeFile',
+                                result: `File created/modified successfully at ${filePath}`,
+                                content: `File created/modified successfully at ${filePath}`,
+                            };
+                            this.addLogMessage(functionMessage);
+                            resolve(`File created/modified successfully at ${filePath}`);
+    
+                        } catch (writeError) {
+                            const errorMessage: ErrorMessage = {
+                                type: 'error',
+                                timestamp: new Date(),
+                                content: `Failed to write file: ${writeError}`,
+                                error: writeError as Error,
+                            };
+                            this.addLogMessage(errorMessage, this.answerContainer);
+                            reject(new Error(`Failed to write file: ${writeError}`));
+                        }
+                    } else {
+                        const functionMessage: FunctionMessage = {
+                            type: 'function',
+                            timestamp: new Date(),
+                            functionName: 'writeFile',
+                            result: `File creation/modification cancelled by user for ${filePath}`,
+                            content: `File creation/modification cancelled by user for ${filePath}`,
+                        };
+                        this.addLogMessage(functionMessage);
+                        resolve(`File creation/modification cancelled by user for ${filePath}`);
+                    }
+                }).open();
+    
+    
+            } catch (error) {
+                const errorMessage: ErrorMessage = {
+                    type: 'error',
+                    timestamp: new Date(),
+                    content: `Failed to process file operation: ${error}`,
+                    error: error as Error,
+                };
+                this.addLogMessage(errorMessage, this.answerContainer);
+                reject(new Error(`Failed to process file operation: ${error}`));
             }
-
-            await this.app.vault.adapter.write(args.path, contentWithNewlines);
-
-            const functionMessage: FunctionMessage = {
-                type: 'function',
-                timestamp: new Date(),
-                functionName: 'writeFile',
-                result: `File created successfully at ${args.path}`,
-                content: `Fiile created successfully at ${args.path}`,
-            };
-            this.addLogMessage(functionMessage);
-
-            return `File created successfully at ${args.path}`;
-        } catch (error) {
-            const errorMessage: ErrorMessage = {
-                type: 'error',
-                timestamp: new Date(),
-                content: `Failed to create file: ${error}`,
-                error: error as Error,
-            };
-            this.addLogMessage(errorMessage, this.answerContainer);
-            throw new Error(`Failed to create file: ${error}`);
-        }
+        });
     }
+    
 
     private tellUser(args: { message: string }): string {
         const modelMessage: ModelMessage = {
