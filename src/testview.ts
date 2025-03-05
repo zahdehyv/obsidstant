@@ -227,7 +227,7 @@ const diffDiv = document.createElement('diivisor');
 diffDiv.classList.add('inserted-diff-in-chat'); // Add a CSS class for styling if needed
 diffDiv.innerHTML = diffHtml;`;
             const exampleFilepath = "example-note.md"; // Example file path
-            const exampleAction = 'create'; // Example action: 'create', 'change', 'delete'
+            const exampleAction = 'delete'; // Example action: 'create', 'change', 'delete'
 
             // 2. Create a new instance of EnhancedDiffModal, passing props
             const diffModal = new EnhancedDiffModal({

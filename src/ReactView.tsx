@@ -33,12 +33,13 @@ export const ReactView: React.FC<ReactViewProps> = (props) => {
         // 2. Convert jsdiff output to unified diff format - same as before
         let unifiedDiff = '';
     if (action === 'create') {
-        unifiedDiff = Diff.createTwoFilesPatch('/dev/null', filepath, '', newVersion, '/dev/null', filepath);
+        unifiedDiff =  Diff.createPatch(filepath, '', newVersion).replace('--- '+filepath+'', 'diff --git a/'+filepath+' b/'+filepath+'\nnew file mode 100000 \n--- '+filepath+''); 
+        // unifiedDiff = Diff.createTwoFilesPatch('/dev/null', filepath, '', newVersion, '/dev/null', filepath);
     } else if (action === 'delete') {
-        unifiedDiff = Diff.createTwoFilesPatch(filepath, filepath, oldVersion, '', filepath, '/dev/null');
+        unifiedDiff =  Diff.createPatch(filepath, oldVersion, '').replace('--- '+filepath+'', 'diff --git a/'+filepath+' b/'+filepath+'\ndeleted file mode 100000 \n--- '+filepath+''); 
     }
     else { // 'change' action
-        unifiedDiff = Diff.createTwoFilesPatch(filepath, filepath, oldVersion, newVersion);
+        unifiedDiff =  Diff.createPatch(filepath, '', newVersion)
     }
         console.log(unifiedDiff);
 //         unifiedDiff = `Index: example-note.md
