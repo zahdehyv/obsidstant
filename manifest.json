@@ -7,5 +7,9 @@
 	"author": "Obsidian",
 	"authorUrl": "https://obsidian.md",
 	"fundingUrl": "https://obsidian.md/pricing",
-	"isDesktopOnly": false
+	"isDesktopOnly": false,
+	"styles": [
+    "diff2html.min.css",
+    "styles2.css"
+  ]
 }

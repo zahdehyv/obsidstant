@@ -12,25 +12,26 @@
 	"author": "",
 	"license": "MIT",
 	"devDependencies": {
-		"@types/diff-match-patch": "^1.0.36",
+		"@types/diff": "^7.0.1",
 		"@types/node": "^16.11.6",
+		"@types/react": "^19.0.10",
+		"@types/react-dom": "^19.0.4",
 		"@types/sortablejs": "^1.15.8",
 		"@typescript-eslint/eslint-plugin": "5.29.0",
 		"@typescript-eslint/parser": "5.29.0",
 		"builtin-modules": "3.3.0",
-		"esbuild": "0.17.3",
+		"esbuild": "^0.25.0",
 		"obsidian": "latest",
 		"tslib": "2.4.0",
 		"typescript": "4.7.4"
 	},
 	"dependencies": {
 		"@google/generative-ai": "^0.21.0",
-		"diff_match_patch": "^0.1.1",
-		"diff-match-patch": "^1.0.5",
+		"diff": "^7.0.0",
 		"diff2html": "^3.4.51",
-		"jsdiff": "^1.1.1",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
 		"sortablejs": "^1.15.6",
-		"sweetalert2": "^11.17.2",
 		"wavesurfer.js": "^7.8.14"
 	}
 }
