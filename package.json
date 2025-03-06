@@ -27,11 +27,15 @@
 	},
 	"dependencies": {
 		"@google/generative-ai": "^0.21.0",
+		"@langchain/core": "^0.3.42",
+		"@langchain/google-genai": "^0.1.10",
+		"@langchain/langgraph": "^0.2.53",
 		"diff": "^7.0.0",
 		"diff2html": "^3.4.51",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
 		"sortablejs": "^1.15.6",
-		"wavesurfer.js": "^7.8.14"
+		"wavesurfer.js": "^7.8.14",
+		"zod": "^3.24.2"
 	}
 }

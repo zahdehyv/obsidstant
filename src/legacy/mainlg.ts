@@ -1,6 +1,6 @@
 import { App, Plugin, Notice, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
-// import { ChatbotView } from './chatview';
-import { BaseBottomBarView } from './testview';
+import { ChatbotView } from './chatview';
+
 interface MyPluginSettings {
     GOOGLE_API_KEY: string;
 }
@@ -84,11 +84,11 @@ export default class MyPlugin extends Plugin {
         await this.loadSettings();
 
         this.registerView(
-            'base-bottom-bar-view',
-            (leaf: WorkspaceLeaf) => new BaseBottomBarView(leaf)//, this.settings.GOOGLE_API_KEY)
+            'chatbot-view',
+            (leaf: WorkspaceLeaf) => new ChatbotView(leaf, this.settings.GOOGLE_API_KEY)
         );
 
-        this.addRibbonIcon('bot-message-square', 'Open Chatbot', () => {
+        this.addRibbonIcon('activity-square', 'Open Chatbot', () => {
             this.activateView();
         });
 
@@ -101,13 +101,14 @@ export default class MyPlugin extends Plugin {
         });
 
         this.addSettingTab(new SampleSettingTab(this.app, this));
+        this.addSettingTab(new SampleSettingTab2(this.app, this));
     }
 
     async activateView() {
         const { workspace } = this.app;
 
         let leaf: WorkspaceLeaf | null = null;
-        const leaves = workspace.getLeavesOfType('base-bottom-bar-view');
+        const leaves = workspace.getLeavesOfType('chatbot-view');
 
         if (leaves.length > 0) {
             leaf = leaves[0];
@@ -116,7 +117,7 @@ export default class MyPlugin extends Plugin {
             if (!leaf) {
                 leaf = workspace.getLeaf('tab');
             }
-            await leaf.setViewState({ type: 'base-bottom-bar-view', active: true });
+            await leaf.setViewState({ type: 'chatbot-view', active: true });
         }
 
         if (leaf) {

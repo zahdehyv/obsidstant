@@ -3,7 +3,6 @@ import * as Diff from 'diff';
 import * as Diff2Html from 'diff2html';
 import { Diff2HtmlUI } from 'diff2html/lib/ui/js/diff2html-ui-slim'; // Import Diff2HtmlUI
 import { ColorSchemeType } from 'diff2html/lib/types';
-// import 'diff2html/bundles/css/diff2html.min.css'; // Ensure CSS is imported
 
 // --- Type Overrides --- (Keep these for diff2html config)
 interface CustomDiff2HtmlConfig extends Diff2Html.Diff2HtmlConfig {
@@ -39,7 +38,7 @@ export const ReactView: React.FC<ReactViewProps> = (props) => {
         unifiedDiff =  Diff.createPatch(filepath, oldVersion, '').replace('--- '+filepath+'', 'diff --git a/'+filepath+' b/'+filepath+'\ndeleted file mode 100000 \n--- '+filepath+''); 
     }
     else { // 'change' action
-        unifiedDiff =  Diff.createPatch(filepath, '', newVersion)
+        unifiedDiff =  Diff.createPatch(filepath, oldVersion, newVersion)
     }
         console.log(unifiedDiff);
 //         unifiedDiff = `Index: example-note.md

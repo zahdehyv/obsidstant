@@ -1,5 +1,7 @@
 import { App, Plugin, Notice, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
-import { ChatbotView } from './chatview';
+// import { ChatbotView } from './chatview';
+import { BaseBottomBarView } from './BottomView';
+
 
 interface MyPluginSettings {
     GOOGLE_API_KEY: string;
@@ -36,46 +38,6 @@ class SampleSettingTab extends PluginSettingTab {
     }
 }
 
-class SampleSettingTab2 extends PluginSettingTab {
-    constructor(app: App, private plugin: MyPlugin) {
-        super(app, plugin);
-    }
-
-    async display() {
-        const { containerEl } = this;
-        containerEl.empty();
-
-        new Setting(containerEl)
-            .setName('Google API key')
-            .setDesc('Enter your Google API key here.')
-            .addText(text => {
-                text
-                    .setPlaceholder('Enter your API key')
-                    .setValue(this.plugin.settings.GOOGLE_API_KEY)
-                    // Remove the password attribute to make the input visible
-                    // .inputEl.setAttribute('type', 'password'); // Comment out or remove this line
-                text.onChange(async (value) => {
-                    this.plugin.settings.GOOGLE_API_KEY = value;
-                    await this.plugin.saveSettings();
-                });
-            });
-            new Setting(containerEl)
-            .setName('Google API key 2')
-            .setDesc('Enter your Google API key here.')
-            .addText(text => {
-                text
-                    .setPlaceholder('Enter your API key')
-                    .setValue("A")
-                    // Remove the password attribute to make the input visible
-                    // .inputEl.setAttribute('type', 'password'); // Comment out or remove this line
-                text.onChange(async (value) => {
-                    this.plugin.settings.GOOGLE_API_KEY = value;
-                    await this.plugin.saveSettings();
-                });
-            });
-            
-    }
-}
 
 export default class MyPlugin extends Plugin {
     settings: MyPluginSettings;
@@ -84,13 +46,25 @@ export default class MyPlugin extends Plugin {
         await this.loadSettings();
 
         this.registerView(
-            'chatbot-view',
-            (leaf: WorkspaceLeaf) => new ChatbotView(leaf, this.settings.GOOGLE_API_KEY)
+            'base-bottom-bar-view',
+            (leaf: WorkspaceLeaf) => new BaseBottomBarView(leaf, this)//, this.settings.GOOGLE_API_KEY)
         );
 
-        this.addRibbonIcon('activity-square', 'Open Chatbot', () => {
+        this.addRibbonIcon('bot-message-square', 'Open Chatbot', () => {
             this.activateView();
         });
+
+        // this.addRibbonIcon('experiment', 'Test RIBBON', async () => {
+        //     //DEFAULT ACTION
+        //     const cust = new custLLM(this.settings.GOOGLE_API_KEY);
+        //     const finalState = await cust.app.invoke(
+        //         { messages: [{ role: "user", content: {parts: [{text:"what's the weather in sf?"}]} }],
+        //     },
+        //       );
+              
+        //       console.log(finalState.messages[finalState.messages.length - 1].content);
+              
+        // });
 
         this.addCommand({
             id: 'open-chatbot',
@@ -101,14 +75,13 @@ export default class MyPlugin extends Plugin {
         });
 
         this.addSettingTab(new SampleSettingTab(this.app, this));
-        this.addSettingTab(new SampleSettingTab2(this.app, this));
     }
 
     async activateView() {
         const { workspace } = this.app;
 
         let leaf: WorkspaceLeaf | null = null;
-        const leaves = workspace.getLeavesOfType('chatbot-view');
+        const leaves = workspace.getLeavesOfType('base-bottom-bar-view');
 
         if (leaves.length > 0) {
             leaf = leaves[0];
@@ -117,7 +90,7 @@ export default class MyPlugin extends Plugin {
             if (!leaf) {
                 leaf = workspace.getLeaf('tab');
             }
-            await leaf.setViewState({ type: 'chatbot-view', active: true });
+            await leaf.setViewState({ type: 'base-bottom-bar-view', active: true });
         }
 
         if (leaf) {

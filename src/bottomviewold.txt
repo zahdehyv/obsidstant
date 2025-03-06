@@ -1,21 +1,39 @@
 import { ItemView, WorkspaceLeaf, setIcon, Notice } from 'obsidian';
 import WaveSurfer from 'wavesurfer.js';
 import { EnhancedDiffModal } from './EnhancedDiffModal';
+import { testModal } from './testModal';
+import { AudioRecorder } from './audiorecorder';
 
 export const VIEW_TYPE_BASE_BOTTOM_BAR = "base-bottom-bar-view"; // Unique view type
 
+interface AudioItem {
+    audioUrl: string;
+    isUploaded: boolean;
+    uploadData: any | null; // Replace 'any' with a more specific type if you have upload data structure
+    wavesurfer: WaveSurfer;
+    card: HTMLDivElement;
+}
+
+
 export class BaseBottomBarView extends ItemView {
-    private chatDisplayContainer: HTMLDivElement; // Just for visual display
-    private waveformContainer: HTMLDivElement; // Container for the waveform display
-    private wavesurfer: WaveSurfer | null = null;
-    private playButton: HTMLButtonElement | null = null;
+    private chatDisplayContainer: HTMLDivElement; // Container for chat messages and audio cards
+    private waveformContainer: HTMLDivElement; // Removed - waveform is in each audio card now
+    private wavesurfer: WaveSurfer | null = null; // Removed - wavesurfer is per audio card
+    private playButton: HTMLButtonElement | null = null; // Removed - play button is per audio card
     private sendButton: HTMLButtonElement;
     private uploadButton: HTMLButtonElement; // Add upload button
     private testButton: HTMLButtonElement; // Add test button
+    // private recordButton: HTMLButtonElement;
+    private audioRecorder: AudioRecorder;
+    private audioItems: AudioItem[] = [];
+    private currentAudioIndex: number = -1; // Index of the currently selected audio in audioItems, -1 for none selected
 
     constructor(leaf: WorkspaceLeaf) {
         super(leaf);
+        // Initialize AudioRecorder, passing the addAudio method as the callback
+        this.audioRecorder = new AudioRecorder((audioUrl) => this.addAudio(audioUrl));
     }
+
 
     getViewType(): string {
         return VIEW_TYPE_BASE_BOTTOM_BAR;
@@ -26,7 +44,7 @@ export class BaseBottomBarView extends ItemView {
     }
 
     getIcon(): string {
-        return "audio-file"; // Example icon, choose a relevant one
+        return "bot-message-square"; // Example icon, choose a relevant one
     }
 
     async onOpen() {
@@ -94,8 +112,9 @@ export class BaseBottomBarView extends ItemView {
             cls: 'record-button-container', // Add a class for styling
             attr: { style: 'flex: 0 0 auto;' } // Adjust flex as needed
         });
-        const recordButton = recordButtonContainer.createEl('button', { cls: 'record-button bottom-bar-button' }); // Just a placeholder button
-        setIcon(recordButton, 'mic'); // Example icon for record
+        // this.audioRecorder.render(recordButtonContainer)
+        // const recordButton = recordButtonContainer.createEl('button', { cls: 'record-button bottom-bar-button' }); // Just a placeholder button
+        // setIcon(recordButton, 'mic'); // Example icon for record
 
 
         // --- Row 2: Grouped Buttons ---
@@ -157,106 +176,8 @@ export class BaseBottomBarView extends ItemView {
 
         // TEST BUTTON ACTION - Modified to use ReactDOM.render
         this.testButton.addEventListener('click', async () => {
-            // --- Example: Open EnhancedDiffModal on button click ---
-
-            // 1. Define example oldVersion and newVersion content (replace with your dynamic content)
-            const exampleOldVersion = `export async function createDiffDivElement(): Promise<HTMLDivElement> { // Renamed and return type specified
-// Example content - replace with dynamic content later
-const oldVersion = "This is the old version of the content.\nLine 2 of old.\nLine 3.";
-const newVersion = "This is the new version of the content.\nLine 2 is modified.\nLine 3, plus a new line 4.";
-const filepath = "example-file.txt";
-const action = 'change';
-
-// 1. Generate diff using jsdiff (line diff)
-const diff = Diff.diffLines(oldVersion, newVersion);
-
-// 2. Convert jsdiff output to unified diff format
-let unifiedDiff = '';
-if (action === 'create') {
-    unifiedDiff = Diff.createTwoFilesPatch('dev/null', filepath, '', newVersion, 'dev/null', filepath);
-} else if (action === 'delete') {
-    unifiedDiff = Diff.createTwoFilesPatch(filepath, 'dev/null', oldVersion, '', filepath, 'dev/null');
-}
-else { // 'change' action
-    unifiedDiff = Diff.createTwoFilesPatch(filepath, filepath, oldVersion, newVersion);
-}
-
-// 3. Generate HTML diff using diff2html
-const diff2htmlConfig: CustomDiff2HtmlConfig = {
-    outputFormat: 'side-by-side',
-    drawFileList: false,
-    highlight: true,
-};
-const diffHtml = Diff2Html.html(unifiedDiff, diff2htmlConfig);
-
-// 4. Create a new div element to hold the diff HTML
-const diffDiv = document.createElement('div');
-diffDiv.classList.add('inserted-diff-in-chat'); // Add a CSS class for styling if needed
-diffDiv.innerHTML = diffHtml;`;
-            const exampleNewVersion = `export async function createDiffDivElement(): Promise<HTMLDivElement> { // Renamed and return type specified
-// Example content - replace with dynamic content later
-const oldVersion = "This is not the old version of the content.\nLine 2 of old.\nLine 3.";
-const newVersion = "This is the new version of the content.\nLine 2 is modified.\nLine 3, plus a new line 4.";
-const filepath = "example-file.txt";
-const action = 'change';
-
-// 1. Generate diff using jsdiff (line diff)
-const diff = Diff.diffLines(oldVersion, newVersion);
-
-// 2. Convert aaaaa jsdiff output to unified diff format
-let unifiedDiff = '';
-if (action === 'create') {
-    unifiedDiff = Diff.createTwoFilesPatch('dev/null', filepath, '', newVersion, 'dev/null', filepath);
-} else if (action === 'delete') {
-    unifiedDiff = Diff.createPatch(filepath, 'dev/null', oldVersion, '', filepath, 'dev/null');
-}
-else { // 'change' action
-    unifiedDiff = Diff.createPatch(filepath, filepath, oldVersion, newVersion);
-}
-
-// 3. Generate HTML diff using diff2html
-const diff2htmlConfig: CustomDiff2HtmlConfig = {
-    outputFormat: 'side-by-side',
-    drawFileList: false,
-    highlight: true,
-};
-const diffHtml == Diff2Html.html(unifiedDiff, diff2htmlConfig);
-
-// 4. Create a new div element to hold the diff HTML
-const diffDiv = document.createElement('diivisor');
-diffDiv.classList.add('inserted-diff-in-chat'); // Add a CSS class for styling if needed
-diffDiv.innerHTML = diffHtml;`;
-            const exampleFilepath = "example-note.md"; // Example file path
-            const exampleAction = 'delete'; // Example action: 'create', 'change', 'delete'
-
-            // 2. Create a new instance of EnhancedDiffModal, passing props
-            const diffModal = new EnhancedDiffModal({
-                app: this.app, // Pass the app instance (assuming 'this.app' is available in BaseBottomBarView)
-                oldVersion: exampleOldVersion, // Pass example old version
-                newVersion: exampleNewVersion, // Pass example new version
-                action: exampleAction,       // Pass example action
-                filepath: exampleFilepath,   // Pass example filepath
-                onConfirm: (confirmed) => {   // Define the onConfirm callback
-                    if (confirmed) {
-                        new Notice("Diff Confirmed! (Action to proceed would go here)");
-                        console.log("Diff Confirmed by user for file:", exampleFilepath);
-                        // --- Your code to perform the action (e.g., writeFile, etc.) would go here ---
-                        // You would likely use 'exampleNewVersion' and 'exampleFilepath' in your action
-                    } else {
-                        new Notice("Diff Cancelled!");
-                        console.log("Diff Cancelled by user for file:", exampleFilepath);
-                        // --- Code to handle cancellation would go here (if needed) ---
-                    }
-                },
-            });
-
-            // 3. Open the EnhancedDiffModal
-            diffModal.open();
-
-            // --- END: EnhancedDiffModal Example ---
+            new testModal(this.app).open(); 
         });
-
-
 
         // You can add placeholder event listeners if you want to demonstrate interaction
         this.sendButton.addEventListener('click', () => {
