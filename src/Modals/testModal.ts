@@ -1,7 +1,6 @@
 import { Modal, App, Notice } from 'obsidian'; // Import necessary classes
-import { EnhancedDiffModal
+import { EnhancedDiffModal } from './diffModal';
 
- } from './EnhancedDiffModal';
 export class testModal extends Modal { // Make the class exportable
 	textInput1: HTMLInputElement;
 	textInput2: HTMLInputElement;

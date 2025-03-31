@@ -1,15 +1,13 @@
 import { ItemView, WorkspaceLeaf, setIcon, Notice } from 'obsidian';
 import WaveSurfer from 'wavesurfer.js';
-import { testModal } from './testModal';
-import { AudioRecorder } from './audiorecorder';
-import { AudioItem } from './fileUploader';
-import { StringInputModal } from './clarifyingModal';
-import { Pipeline } from './Pipeline';
-import MyPlugin from './main';
+import { AudioRecorder } from '../Utilities/audiorecorder';
+import { AudioItem } from '../Utilities/fileUploader';
+import { Pipeline } from '../Agent/Pipeline';
+import MyPlugin from '../main';
 
 export const VIEW_TYPE_BASE_BOTTOM_BAR = "base-bottom-bar-view"; // Unique view type
 
-export class BaseBottomBarView extends ItemView {
+export class InteractView extends ItemView {
     private chatDisplayContainer: HTMLDivElement; // Just for visual display
     private waveformContainer: HTMLDivElement; // Container for the waveform display
     private wavesurfer: WaveSurfer | null = null;
@@ -24,12 +22,14 @@ export class BaseBottomBarView extends ItemView {
     private currentAudioIndex: number = -1;
     private audioIndexDisplay: HTMLSpanElement; // Element to display audio index
     private pipeline: Pipeline;
+    private processing: boolean;
 
 
     constructor(leaf: WorkspaceLeaf, plugin: MyPlugin) {
         super(leaf);
         this.audioRecorder = new AudioRecorder((audioUrl) => this.addAudio(audioUrl));
         this.pipeline = new Pipeline(plugin);
+        this.processing = false;
     }
 
     getViewType(): string {
@@ -87,55 +87,40 @@ export class BaseBottomBarView extends ItemView {
         // Waveform Container (Visualizer)
         this.waveformContainer = row1.createDiv({
             cls: 'waveform-container', // Add a class for styling
-            attr: { style: 'flex: 1; height: 40px; margin-right: 10px; background: #333; border-radius: 30px; overflow: hidden;' } // Basic styling, adjust as needed
+            attr: { style: 'flex: 1; height: 40px; margin-right: 10px; background: transparent; border-radius: 3px; overflow: hidden;' } // Basic styling, adjust as needed
         });
         
 
         // Initialize WaveSurfer (but don't load audio yet)
         this.wavesurfer = WaveSurfer.create({
             container: this.waveformContainer,
+            mediaControls:true,
             waveColor: '#555',
+            normalize:true,
+            backend: 'MediaElement',
             progressColor: '#9600ec',
-            barWidth: 2,
+            barWidth: 4,
             barHeight: 1,
-            barGap: 2,
+            barGap: 1,
             height: 40, // Match container height
             cursorWidth: 0,
-            interact: false, // Disable interaction for visualizer only initially
+            barRadius:7,
+            dragToSeek:true,
+            interact: true, // Disable interaction for visualizer only initially
             // responsive: true,
         });
 
-        const counterContainer = row1.createDiv({
-            cls: 'count-container', // Add a class for styling
-            attr: { style: 'flex: 0.3; height: 40px; margin-right: 10px; background: #333; border-radius: 3px; overflow: hidden;' } // Basic styling, adjust as needed
-        });
+        // const counterContainer = row1.createDiv({
+        //     cls: 'count-container', // Add a class for styling
+        //     attr: { style: 'flex: 0.3; height: 40px; margin-right: 10px; background: transparent; border-radius: 3px; overflow: hidden;' } // Basic styling, adjust as needed
+        // });
 
         // Audio Index Display
-        this.audioIndexDisplay = counterContainer.createEl('span', {
+        this.audioIndexDisplay = row1.createEl('span', {
             cls: 'audio-index-display',
             attr: { style: 'color: #fff; font-size: 1.8em;' } // Style as needed
         });
         this.updateAudioIndexDisplay(); // Initial update
-
-        // Record Button Container
-        const recordButtonContainer = row1.createEl('div', {
-            cls: 'record-button-container', // Add a class for styling
-            attr: { style: 'flex: 0 0 auto;' } // Adjust flex as needed
-        });
-        this.audioRecorder.render(recordButtonContainer);
-        // this.recordButton = recordButtonContainer.createEl('button', { cls: 'record-button bottom-bar-button' }); // Just a placeholder button
-        // setIcon(this.recordButton, 'mic'); // Example icon for record
-
-        // this.recordButton.addEventListener('click', () => {
-        //     if (this.audioRecorder.isRecording) {
-        //         this.audioRecorder.stopRecording();
-        //         setIcon(this.recordButton, 'mic'); // Change icon back to mic
-        //     } else {
-        //         this.audioRecorder.startRecording();
-        //         setIcon(this.recordButton, 'stop-recording'); // Change icon to stop
-        //     }
-        // });
-
 
         // --- Row 2: Grouped Buttons ---
         const row2 = bottomBarContainer.createDiv({
@@ -177,10 +162,10 @@ export class BaseBottomBarView extends ItemView {
         });
 
         // Test Button
-        this.testButton = group2Container.createEl('button', {
-            cls: ['obsidian-button', 'grouped-button', 'bottom-bar-button', 'test-button'] // Add classes
-        });
-        setIcon(this.testButton, 'experiment'); // Upload icon
+        // this.testButton = group2Container.createEl('button', {
+        //     cls: ['obsidian-button', 'grouped-button', 'bottom-bar-button', 'test-button'] // Add classes
+        // });
+        // setIcon(this.testButton, 'experiment'); // Upload icon
 
         // Upload Button
         this.uploadButton = group2Container.createEl('button', {
@@ -188,17 +173,13 @@ export class BaseBottomBarView extends ItemView {
         });
         setIcon(this.uploadButton, 'upload'); // Upload icon
 
+        this.audioRecorder.render(group2Container);
+
         // Send Button
         this.sendButton = group2Container.createEl('button', {
             cls: ['obsidian-button', 'grouped-button', 'bottom-bar-button', 'send-button'] // Add classes
         });
         setIcon(this.sendButton, "corner-down-left"); // Send icon
-
-        // TEST BUTTON ACTION - Modified to use ReactDOM.render
-        this.testButton.addEventListener('click', async () => {
-            const modal = new StringInputModal(this.app, "SSSSASASFASFASFASFASFSAFASFASFAF");
-			const result = await modal.openAndGetValue(); // Await the Promise
-        });
 
         this.playButton.addEventListener('click', () => {
             if (this.currentAudioIndex !== -1 && this.wavesurfer) {
@@ -247,23 +228,39 @@ export class BaseBottomBarView extends ItemView {
             }
         });
 
+        this.uploadButton.addEventListener('click', async () => {
+            new Notice("Upload button clicked, here must go a file loading logic...");
+            // logic
+        });
 
         // You can add placeholder event listeners if you want to demonstrate interaction
         this.sendButton.addEventListener('click', async () => {
-            new Notice("Send button clicked");
-            // const result = await this.pipeline.pipe(this.audioList[this.currentAudioIndex].uploadData.file);
-            const result = await this.pipeline.pipe(this.audioList[this.currentAudioIndex])
+            this.sendButton.disabled = true;
+            this.processing = true;
+            this.waitCLK(); // starts an async process without waiting for it, but it stops based on this.processing
+            try {
+                const result = await this.pipeline.pipe(this.audioList[this.currentAudioIndex])
                 
-            this.chatDisplayContainer.textContent = result;
-                     
-            // let full = '';
-            // for await (const chunkText of result) {
-            //   full = full + chunkText;
-            //   this.chatDisplayContainer.textContent = full
-            // }
+                this.chatDisplayContainer.textContent = result;
+            } catch (error) {
+                new Notice(error);
+                this.chatDisplayContainer.textContent = "ERROR SOMEWHERE";
+                await sleep(4000);
+                
+            }
+            this.processing=false;
+            this.sendButton.disabled = false;
+            setIcon(this.sendButton, 'corner-down-left')
         });
 
     }
+    private async waitCLK(){
+        for (let index = 0; this.processing; index++) {
+            setIcon(this.sendButton, 'clock-'+((index%12)+1))
+            await sleep(500);
+        }
+    }
+
     private updateAudioIndexDisplay() {
         if (this.audioIndexDisplay) {
             if (this.audioList.length > 0 && this.currentAudioIndex !== -1) {
@@ -274,8 +271,6 @@ export class BaseBottomBarView extends ItemView {
         }
     }
         
-
-
     private addAudio(audioUrl: string) {
         const newAudioItem: AudioItem = {
             url: audioUrl,
@@ -289,7 +284,6 @@ export class BaseBottomBarView extends ItemView {
         this.updateAudioIndexDisplay(); 
     }
 
-
     private loadAudioToWaveform(audioUrl: string) {
         if (this.wavesurfer) {
             this.wavesurfer.load(audioUrl);
@@ -300,7 +294,6 @@ export class BaseBottomBarView extends ItemView {
             });
         }
     }
-
 
     async onClose() {
         if (this.wavesurfer) {

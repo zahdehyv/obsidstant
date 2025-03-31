@@ -5,7 +5,7 @@ export class StringInputModal extends Modal {
 	resultString: string | null = null; // To store the result
 	resolvePromise: (value: string | null) => void; // Promise resolve function
 	rejectPromise: (reason?: any) => void; // Promise reject function
-	inputEl: HTMLInputElement; // Reference to the input element
+	inputEl: HTMLTextAreaElement; // Reference to the input element
 
 	constructor(app: App, initialString: string) {
 		super(app);
@@ -17,12 +17,19 @@ export class StringInputModal extends Modal {
 
 		contentEl.createEl('h2', { text: 'Enter/Edit String' });
 
-		// Text Input
-		this.inputEl = contentEl.createEl('input', { type: 'text' });
-		this.inputEl.value = this.initialString; // Set initial value
+		// Text Area 1 (Multiline)
+		this.inputEl = contentEl.createEl('textarea'); // Changed to 'textarea'
 		this.inputEl.style.width = '100%';
+		this.inputEl.style.height = '160px'; // Set a reasonable initial height
+		this.inputEl.value = this.initialString; // Set initial value
 		contentEl.appendChild(document.createElement('br'));
-		contentEl.appendChild(document.createElement('br'));
+
+		// Text Input
+		// this.inputEl = contentEl.createEl('input', { type: 'text' });
+		// this.inputEl.value = this.initialString; // Set initial value
+		// this.inputEl.style.width = '100%';
+		// contentEl.appendChild(document.createElement('br'));
+		// contentEl.appendChild(document.createElement('br'));
 
 		// Button Container
 		const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });

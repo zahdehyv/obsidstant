@@ -1,7 +1,7 @@
 import { Modal, App, ButtonComponent, WorkspaceLeaf } from 'obsidian'; // Removed MarkdownView import
 import React, { StrictMode } from 'react'; // Import StrictMode from React
 import ReactDOM from 'react-dom/client'; // Import createRoot and Root from react-dom/client
-import { ReactView } from './ReactView'; // Import the ReactView component
+import { ReactView } from '../Views/ReactView'; // Import the ReactView component
 
 interface EnhancedDiffModalProps {
     app: App;

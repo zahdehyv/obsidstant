@@ -1,6 +1,6 @@
 import { App, Plugin, Notice, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
 // import { ChatbotView } from './chatview';
-import { BaseBottomBarView } from './BottomView';
+import { InteractView } from './Views/InteractView';
 
 
 interface MyPluginSettings {
@@ -47,7 +47,7 @@ export default class MyPlugin extends Plugin {
 
         this.registerView(
             'base-bottom-bar-view',
-            (leaf: WorkspaceLeaf) => new BaseBottomBarView(leaf, this)//, this.settings.GOOGLE_API_KEY)
+            (leaf: WorkspaceLeaf) => new InteractView(leaf, this)//, this.settings.GOOGLE_API_KEY)
         );
 
         this.addRibbonIcon('bot-message-square', 'Open Chatbot', () => {

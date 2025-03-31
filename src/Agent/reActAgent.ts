@@ -9,9 +9,9 @@ import {
     END,
     START
 } from "@langchain/langgraph/web";
-import MyPlugin from "./main";
-import { StringInputModal } from "./clarifyingModal";
-import { EnhancedDiffModal } from "./EnhancedDiffModal";
+import MyPlugin from "../main";
+import { StringInputModal } from "../Modals/clarifyingModal";
+import { EnhancedDiffModal } from "../Modals/diffModal";
 
 export class reActAgentLLM {
     public app: any;
@@ -31,7 +31,19 @@ export class reActAgentLLM {
       }, {
         name: "clarifyingQuestions",
         description:
-          "Use to ask clarifying questions whenever.",
+          `Usada para preguntar preguntas esclarecedoras.
+Ejemplo:
+1. ¿A quién está dirigida la poesía? 
+r/ A un amor no correspondido.
+2. ¿Cuál es el tono general que deseas para la poesía? 
+r/ Nostalgico.
+3. ¿Hay algún tema o imagen específica que quieras que se incluya en la poesía?
+r/ La luna.
+4. ¿Hay alguna palabra o frase clave que te gustaría que se repita o destaque en la poesía?
+r/ Nuestro amor.
+5. ¿Qué extensión te gustaría que tuviera la poesía?
+r/ Media
+`,
         schema: z.object({
           questions_answers: z.string().describe("Questions to be answered in a long string, each one must include a default answer."),
         }),
@@ -72,7 +84,7 @@ export class reActAgentLLM {
                                                             try {
                                                                 await this.plugin.app.vault.adapter.write(filePath, contentWithNewlines);
                                         
-                                                                resolve(`El llamado a funcion se completo correctamente, creandose el archivo ${filePath}, ahora puedes continuar con las instrucciones proveidas originalmente. Puede decidir llamar a la funcion nuevamente si lo desea, en caso de que deba modificar el poema por alguna razon.`);
+                                                                resolve(`El llamado a funcion se completo correctamente, creandose el archivo ${filePath}.`);
                                         
                                                             } catch (writeError) {
                                                                 reject(new Error(`Error al escribir archivo: ${writeError}`));
@@ -118,7 +130,7 @@ const toolNodeForGraph = new ToolNode(obs_tools)
   
   const shouldContinue = (state: typeof MessagesAnnotation.State) => {
     const { messages } = state;
-    const lastMessage = messages[messages.length - 1];
+    const lastMessage: any = messages[messages.length - 1];
     if ("tool_calls" in lastMessage && Array.isArray(lastMessage.tool_calls) && lastMessage.tool_calls?.length) {
         return "tools";
     }
@@ -143,13 +155,9 @@ const toolNodeForGraph = new ToolNode(obs_tools)
   
   this.app = workflow.compile()
 
-    //   const aiMsg = await app.invoke([
-    //       ["human", ""],
-    //     ]);
-    //     console.log(aiMsg);
     }
     
-    }
+ }
   
       
 

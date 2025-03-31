@@ -1,11 +1,6 @@
-
-import { geminiTools } from "./geminiTools";
-import { createModel } from "./geminiModel";
-import { ChatSession, GenerativeModel } from "@google/generative-ai";
-import { App } from "obsidian";
-import MyPlugin from "./main";
+import MyPlugin from "../main";
 import { ttsBase, ttsGeminiFL } from "./ttsServiss";
-import { AudioItem } from "./fileUploader";
+import { AudioItem } from "../Utilities/fileUploader";
 import { reActAgentLLM } from "./reActAgent";
 
 export class Pipeline {
@@ -19,14 +14,16 @@ export class Pipeline {
     public async pipe(audio: AudioItem) {
        const inst = await this.tts.transcribe(audio);
 
+       const prompt = inst + "\n\nHaz preguntas esclarecedoras si lo consideras necesario (usando la funcion)."
+
       const finalState = await this.reActAgent.app.invoke({
-        messages: [{ role: "user", content: inst }],
+        messages: [{ role: "user", content: prompt }],
       });
       
       const answer = finalState.messages[finalState.messages.length - 1].content;
       console.log(answer);
       
-       return answer;
-}
+      return answer;
+    }
 
 }

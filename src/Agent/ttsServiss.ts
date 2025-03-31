@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI, FunctionCallingMode, GenerativeModel, ChatSession, FunctionDeclaration } from '@google/generative-ai';
-import { AudioItem } from './fileUploader';
-import { AudioUploader } from './fileUploader';
+import { AudioItem } from '../Utilities/fileUploader';
+import { AudioUploader } from '../Utilities/fileUploader';
 
 export class ttsBase {
     constructor() {}
@@ -44,8 +44,6 @@ Claro, aquí está la transcripción del audio, con correcciones y el tag solici
 
 <|inst|>
 Quiero que crees un archivo donde incluyas una receta, que tenga ingredientes, por ejemplo, pollo, tomate, zanahoria, qué sé yo, y además, quiero que después me expliques cómo podría conseguir estos ingredientes y qué otras cosas podrías hacer con estos ingredientes en caso de que me sobre alguno.
-
-
 
 `},
           ]);

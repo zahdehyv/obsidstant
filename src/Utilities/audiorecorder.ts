@@ -1,6 +1,5 @@
-import { setIcon
+import { setIcon } from "obsidian";
 
- } from "obsidian";
 export class AudioRecorder {
     private mediaRecorder: MediaRecorder | null = null;
     private recordedChunks: Blob[] = [];
@@ -10,7 +9,8 @@ export class AudioRecorder {
 
     render(container: HTMLDivElement) {
         this.icon = container.createEl('button', {
-            attr: { style: 'cursor: pointer; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #444; transition: background 0.2s; margin: 10px auto;' }
+            cls: ['obsidian-button', 'grouped-button', 'bottom-bar-button', 'send-button'] // Add classes
+            // attr: { style: 'cursor: pointer; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #444; transition: background 0.2s; margin: 10px auto;' }
         });
         setIcon(this.icon, 'mic');
 
@@ -74,7 +74,7 @@ export class AudioRecorder {
 
     private setRecordingIndicator(isRecording: boolean) {
         if (this.icon) {
-            this.icon.style.backgroundColor = isRecording ? '#ff0000' : '#444';
+            this.icon.style.backgroundColor = isRecording ? '#ff0000' : 'transparent';
         }
     }
 }
